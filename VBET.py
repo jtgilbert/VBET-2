@@ -37,6 +37,8 @@ class VBET:
 
         self.crs_out = self.network.crs
 
+        self.polygons = []
+
     def add_da(self):
         """
         Adds a drainage area attribute to each segment of the drainage network
@@ -164,10 +166,8 @@ class VBET:
 
         for j in range(0, array1.shape[0] - 1):
             for i in range(0, array1.shape[1] - 1):
-                if array1[j, i] == 1 and array2[j, i] == 1:
-                    out_array[j, i] = 1
-                elif array1[j, 1] == 1. and array2[j, i] == 1.:
-                    out_array[j, i] = 1
+                if array1[j, i] == 1. and array2[j, i] == 1.:
+                    out_array[j, i] = 1.
                 else:
                     out_array[j, i] = ndval
 
@@ -191,11 +191,11 @@ class VBET:
         c = mo.binary_closing(b, selem=np.ones((7, 7)))
         d = mo.remove_small_holes(c, thresh, 1)
 
-        out_array = np.full(d.shape, ndval)
+        out_array = np.full(d.shape, ndval, dtype=np.float32)
         for j in range(0, d.shape[0] - 1):
             for i in range(0, d.shape[1] - 1):
                 if d[j, i] == True:
-                    out_array[j, i] = 1
+                    out_array[j, i] = 1.
 
         return out_array
 
@@ -218,7 +218,7 @@ class VBET:
 
         return
 
-    def raster_to_shp(self, array, raster_like, shp_out):
+    def raster_to_shp(self, array, raster_like):
         """
         Convert the 1 values in an array of 1s and NoData to a polygon
         :param array: 2-D array of 1s and NoData
@@ -240,7 +240,11 @@ class VBET:
 
         df = gpd.GeoDataFrame.from_features(geoms)
         df.crs = crs
-        df.to_file(shp_out)
+        #df.to_file(shp_out)
+        geom = df['geometry']
+
+        for x in range(len(geom)):
+            self.polygons.append(geom[x])
 
         return
 
@@ -254,13 +258,14 @@ class VBET:
         Run the VBET algorithm
         :return: saves a valley bottom shapefile
         """
-        polygons = []
 
         for i in self.network.index:
             seg = self.network.loc[i]
             elev = seg['Elev']
             da = seg['Drain_Area']
             geom = seg['geometry']
+
+            print 'elev', elev
 
             if da >= self.lg_da:
                 buf = geom.buffer(self.lg_buf)
@@ -289,6 +294,7 @@ class VBET:
             ndval = demsrc.nodata
 
             slope = self.slope(dem)
+
             if da >= self.lg_da:
                 slope_sub = self.reclassify(slope, ndval, self.lg_slope)
             elif da < self.lg_da and da >= self.med_da:
@@ -297,28 +303,29 @@ class VBET:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
             if da >= self.lg_da:
-                depth = self.reclassify(demarray, ndval, self.lg_depth)
+                depth = self.reclassify(demarray, ndval, elev + self.lg_depth)
             elif da < self.lg_da and da >= self.med_da:
-                depth = self.reclassify(demarray, ndval, self.med_depth)
+                depth = self.reclassify(demarray, ndval, elev + self.med_depth)
             else:
                 depth = None
 
             if depth is not None:
                 overlap = self.raster_overlap(slope_sub, depth, ndval)
                 filled = self.fill_raster_holes(overlap, 10000, ndval)
-                self.raster_to_shp(filled, dem, self.scratch + '/poly' + str(i))
-                poly = gpd.read_file(self.scratch + '/poly' + str(i))
-                poly_geom = poly.loc[0, 'geometry']
-                polygons.append(poly_geom)
+                self.raster_to_shp(filled, dem)
+                #poly = gpd.read_file(self.scratch + '/poly' + str(i))
+                #poly_geom = poly.loc[0, 'geometry']
+                #polygons.append(geom)
             else:
                 filled = self.fill_raster_holes(slope_sub, 10000, ndval)
-                self.raster_to_shp(filled, dem, self.scratch + '/poly' + str(i))
-                poly = gpd.read_file(self.scratch + '/poly' + str(i))
-                poly_geom = poly.loc[0, 'geometry']
-                polygons.append(poly_geom)
+                print filled[0:10, 0:10]
+                self.raster_to_shp(filled, dem)
+                #poly = gpd.read_file(self.scratch + '/poly' + str(i))
+                #poly_geom = poly.loc[0, 'geometry']
+                #polygons.append(geom)
 
         # merge all polygons in folder and dissolve
-        vb = gpd.GeoSeries(cascaded_union(polygons))
+        vb = gpd.GeoSeries(cascaded_union(self.polygons))
         vb.crs = self.crs_out
         vb.to_file(self.out)
 
