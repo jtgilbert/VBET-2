@@ -4,6 +4,7 @@ import rasterio
 import rasterio.mask
 from rasterio.features import shapes
 from shapely.geometry import Point
+from shapely.ops import cascaded_union
 from rasterstats import zonal_stats
 import numpy as np
 import skimage.morphology as mo
@@ -19,6 +20,7 @@ class VBET:
 
         self.network = gpd.read_file(kwargs['network'])
         self.dem = kwargs['dem']
+        self.out = kwargs['out']
         self.scratch = kwargs['scratch']
         self.lg_da = kwargs['lg_da']
         self.med_da = kwargs['med_da']
@@ -32,6 +34,8 @@ class VBET:
         self.dr_area = kwargs['dr_area']
         self.lg_depth = kwargs['lg_depth']
         self.med_depth = kwargs['med_depth']
+
+        self.crs_out = self.network.crs
 
     def add_da(self):
         """
@@ -48,7 +52,7 @@ class VBET:
             mid_pt_y = geom.coords.xy[1][pos]
 
             pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.Buffer(50)
+            buf = pt.buffer(50)
 
             zs = zonal_stats(buf, self.dem, stats='max')
             da_val = zs[0].get('max')
@@ -78,7 +82,7 @@ class VBET:
             mid_pt_y = seg_geom.coords.xy[1][pos]
 
             pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.Buffer(20)
+            buf = pt.buffer(20)
 
             zs = zonal_stats(buf, self.dem, stats='min')
             elev_val = zs[0].get('min')
@@ -250,6 +254,8 @@ class VBET:
         Run the VBET algorithm
         :return: saves a valley bottom shapefile
         """
+        polygons = []
+
         for i in self.network.index:
             seg = self.network.loc[i]
             elev = seg['Elev']
@@ -301,10 +307,18 @@ class VBET:
                 overlap = self.raster_overlap(slope_sub, depth, ndval)
                 filled = self.fill_raster_holes(overlap, 10000, ndval)
                 self.raster_to_shp(filled, dem, self.scratch + '/poly' + str(i))
+                poly = gpd.read_file(self.scratch + '/poly' + str(i))
+                poly_geom = poly.loc[0, 'geometry']
+                polygons.append(poly_geom)
             else:
                 filled = self.fill_raster_holes(slope_sub, 10000, ndval)
                 self.raster_to_shp(filled, dem, self.scratch + '/poly' + str(i))
+                poly = gpd.read_file(self.scratch + '/poly' + str(i))
+                poly_geom = poly.loc[0, 'geometry']
+                polygons.append(poly_geom)
 
         # merge all polygons in folder and dissolve
-        polygons = []
+        vb = gpd.GeoSeries(cascaded_union(polygons))
+        vb.crs = self.crs_out
+        vb.to_file(self.out)
 
