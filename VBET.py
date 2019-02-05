@@ -8,6 +8,7 @@ from shapely.ops import cascaded_union
 from rasterstats import zonal_stats
 import numpy as np
 import skimage.morphology as mo
+from scipy.signal import convolve2d
 import json
 
 
@@ -102,29 +103,24 @@ class VBET:
         :return: a 2-D array with the values representing slope for the cell
         """
         with rasterio.open(dem, 'r') as src:
-            arr = src.read()
-            a = arr[0, :, :]
+            arr = src.read()[0, :, :]
 
-            x_res = src.res[0]
-            y_res = src.res[1]
+            xres = src.res[0]
+            yres = src.res[1]
 
-            rows, cols = a.shape
+        x = np.array([[-1 / (8 * xres), 0, 1 / (8 * xres)],
+                      [-2 / (8 * xres), 0, 2 / (8 * xres)],
+                      [-1 / (8 * xres), 0, 1 / (8 * xres)]])
+        y = np.array([[1 / (8 * yres), 2 / (8 * yres), 1 / (8 * yres)],
+                      [0, 0, 0],
+                      [-1 / (8 * yres), -2 / (8 * yres), -1 / (8 * yres)]])
 
-            out_array = np.full(a.shape, src.nodata, dtype=src.dtypes[0])
+        x_grad = convolve2d(arr, x, mode='same', boundary='fill', fillvalue=1)
+        y_grad = convolve2d(arr, y, mode='same', boundary='fill', fillvalue=1)
+        slope = np.arctan(np.sqrt(x_grad ** 2 + y_grad ** 2)) * (180. / np.pi)
+        slope = slope.astype(src.dtypes[0])
 
-            for j in range(1, rows - 2):
-                for i in range(1, cols - 2):
-                    if a[j, i] == src.nodata:
-                        out_array[j, i] = src.nodata
-                    else:
-                        dzdx = ((a[j + 1, i + 1] + 2 * a[j, i + 1] + a[j - 1, i + 1]) - (
-                                a[j + 1, i - 1] + 2 * a[j, i - 1] + a[j - 1, i - 1])) / (8 * x_res)
-                        dzdy = ((a[j + 1, i + 1] + 2 * a[j + 1, i] + a[j + 1, i - 1]) - (
-                                a[j - 1, i + 1] + 2 * a[j - 1, i] + a[j - 1, i - 1])) / (8 * y_res)
-                        grad = np.arctan(np.sqrt(dzdx ** 2 + dzdy ** 2))
-                        out_array[j, i] = grad * 100
-
-        return out_array
+        return slope
 
     def reclassify(self, array, ndval, thresh):
         """

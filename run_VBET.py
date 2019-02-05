@@ -3,8 +3,8 @@ import VBET
 
 params = {
     'network': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/NHD_700m_sub.shp',
-    'dem': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/4mDEM.tif',
-    'out': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/valley.shp',
+    'dem': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/2mDEM.tif',
+    'out': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/valley2.shp',
     'scratch': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/scratch',
     'lg_da': 250,
     'med_da': 25,
