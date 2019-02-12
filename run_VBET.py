@@ -2,25 +2,26 @@ import VBET
 
 
 params = {
-    'network': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/NHD_700m_sub.shp',
-    'dem': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/2mDEM.tif',
-    'out': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/valley2.shp',
-    'scratch': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/2mDEM_Projected/hrvbet/scratch',
+    'network': '/home/jordan/Documents/RioGrande/Lower_RG.shp',
+    'dem': '/home/jordan/Documents/RioGrande/4m_clipped.tif',
+    'out': '/home/jordan/Documents/RioGrande/vb_lower_rg3.shp',
+    'scratch': '/home/jordan/Documents/RioGrande/scratch2',
     'lg_da': 250,
     'med_da': 25,
-    'lg_slope': 3,
-    'med_slope': 6,
+    'lg_slope': 1.5,
+    'med_slope': 3,
     'sm_slope': 10,
     'lg_buf': 1000,
-    'med_buf': 250,
+    'med_buf': 150,
     'sm_buf': 10,
     'min_buf': 8,
-    'dr_area': '/media/jordan/Seagate Backup Plus Drive/sidework/Rio_Grande/VBET Data/topo/Rio_Grande_DrArea.tif',
-    'lg_depth': 2.5,
-    'med_depth': 1.5
+    'dr_area': '/home/jordan/Documents/RioGrande/Rio_Grande_DrArea.tif',
+    'lg_depth': 1.7,
+    'med_depth': 1
 }
 
 vb = VBET.VBET(**params)
 vb.add_da()
-vb.add_elev()
 vb.valley_bottom()
+
+# try running in current form with longer segments, ~2 km maybe

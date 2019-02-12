@@ -3,7 +3,7 @@ import geopandas as gpd
 import rasterio
 import rasterio.mask
 from rasterio.features import shapes
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString
 from shapely.ops import cascaded_union
 from rasterstats import zonal_stats
 import numpy as np
@@ -69,32 +69,32 @@ class VBET:
 
         return
 
-    def add_elev(self):
-        """
-        Adds a median stream elevation value to each segment of the drainage network
-        :return:
-        """
-        elev_list = []
-
-        for i in self.network.index:
-            segment = self.network.loc[i]
-
-            seg_geom = segment['geometry']
-            pos = int(len(seg_geom.coords.xy[0]) / 2)
-            mid_pt_x = seg_geom.coords.xy[0][pos]
-            mid_pt_y = seg_geom.coords.xy[1][pos]
-
-            pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.buffer(20)
-
-            zs = zonal_stats(buf, self.dem, stats='min')
-            elev_val = zs[0].get('min')
-
-            elev_list.append(elev_val)
-
-        self.network['Elev'] = elev_list
-
-        return
+    # def add_elev(self):
+    #     """
+    #     Adds a median stream elevation value to each segment of the drainage network
+    #     :return:
+    #     """
+    #     elev_list = []
+    #
+    #     for i in self.network.index:
+    #         segment = self.network.loc[i]
+    #
+    #         seg_geom = segment['geometry']
+    #         pos = int(len(seg_geom.coords.xy[0]) / 2)
+    #         mid_pt_x = seg_geom.coords.xy[0][pos]
+    #         mid_pt_y = seg_geom.coords.xy[1][pos]
+    #
+    #         pt = Point(mid_pt_x, mid_pt_y)
+    #         buf = pt.buffer(20)
+    #
+    #         zs = zonal_stats(buf, self.dem, stats='min')
+    #         elev_val = zs[0].get('min')
+    #
+    #         elev_list.append(elev_val)
+    #
+    #     self.network['Elev'] = elev_list
+    #
+    #     return
 
     def slope(self, dem):
         """
@@ -121,6 +121,59 @@ class VBET:
         slope = slope.astype(src.dtypes[0])
 
         return slope
+
+    def detrend(self, dem, seg_geom, offset):
+        with rasterio.open(dem) as src:
+            meta = src.profile
+            arr = src.read()[0, :, :]
+            res_x = abs(src.transform[1])
+            res_y = abs(src.transform[5])
+            x_min = src.transform[0]
+            y_max = src.transform[3]
+            y_min = y_max - (src.height*res_y)
+
+        # points along network in real coords
+        _xs = seg_geom.xy[0][::3]
+        _ys = seg_geom.xy[1][::3]
+
+        zs = np.zeros_like(_xs)
+
+        for i in range(len(_xs)):
+            pt = Point(_xs[i], _ys[i])
+            buf = pt.buffer(4)
+            zonal = zonal_stats(buf, dem, stats='min')
+            val = zonal[0].get('min')
+
+            zs[i] = val
+
+        # points in array coords
+        xs = np.zeros_like(_xs)
+        ys = np.zeros_like(_ys)
+
+        for i in range(len(_xs)):
+            xs[i] = int((_xs[i] - x_min) / res_x)  # column in array space
+            ys[i] = int((y_max - _ys[i]) / res_y)  # row in array space
+
+        # do fit
+        tmp_A = []
+        tmp_b = []
+        for i in range(len(xs)):
+            tmp_A.append([xs[i], ys[i], 1])
+            tmp_b.append(zs[i])
+        b = np.matrix(tmp_b).T
+        A = np.matrix(tmp_A)
+        fit = (A.T * A).I * A.T * b
+        errors = b - A * fit
+        residual = np.linalg.norm(errors)
+
+        trend = np.full((src.height, src.width), src.nodata, dtype=src.dtypes[0])
+        for j in range(trend.shape[0]):
+            for i in range(trend.shape[1]):
+                trend[j, i] = fit[0] * i + fit[1] * j + fit[2]
+
+        out_arr = arr - trend
+
+        return out_arr
 
     def reclassify(self, array, ndval, thresh):
         """
@@ -185,7 +238,7 @@ class VBET:
 
         b = mo.remove_small_holes(binary, thresh, 1)
         c = mo.binary_closing(b, selem=np.ones((7, 7)))
-        d = mo.remove_small_holes(c, thresh, 1)
+        d = mo.remove_small_holes(c, 500, 1)
 
         out_array = np.full(d.shape, ndval, dtype=np.float32)
         for j in range(0, d.shape[0] - 1):
@@ -257,18 +310,21 @@ class VBET:
 
         for i in self.network.index:
             seg = self.network.loc[i]
-            elev = seg['Elev']
             da = seg['Drain_Area']
             geom = seg['geometry']
 
-            print 'elev', elev
+            print i
+
+            ept1 = (geom.boundary[0].xy[0][0], geom.boundary[0].xy[1][0])
+            ept2 = (geom.boundary[1].xy[0][0], geom.boundary[1].xy[1][0])
+            line = LineString([ept1, ept2])
 
             if da >= self.lg_da:
-                buf = geom.buffer(self.lg_buf)
+                buf = line.buffer(self.lg_buf, cap_style=1)
             elif da < self.lg_da and da >= self.med_da:
-                buf = geom.buffer(self.med_buf)
+                buf = line.buffer(self.med_buf, cap_style=1)
             else:
-                buf = geom.buffer(self.sm_buf)
+                buf = line.buffer(self.sm_buf, cap_style=1)
 
             bufds = gpd.GeoSeries(buf)
             coords = self.getFeatures(bufds)
@@ -298,22 +354,24 @@ class VBET:
             else:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
+            detr = self.detrend(dem, geom, self.med_buf)  # might want to change this offset
+
             if da >= self.lg_da:
-                depth = self.reclassify(demarray, ndval, elev + self.lg_depth)
+                depth = self.reclassify(detr, ndval, self.lg_depth)
             elif da < self.lg_da and da >= self.med_da:
-                depth = self.reclassify(demarray, ndval, elev + self.med_depth)
+                depth = self.reclassify(detr, ndval, self.med_depth)
             else:
                 depth = None
 
             if depth is not None:
                 overlap = self.raster_overlap(slope_sub, depth, ndval)
-                filled = self.fill_raster_holes(overlap, 10000, ndval)
+                filled = self.fill_raster_holes(overlap, 30000, ndval)
                 self.raster_to_shp(filled, dem)
                 #poly = gpd.read_file(self.scratch + '/poly' + str(i))
                 #poly_geom = poly.loc[0, 'geometry']
                 #polygons.append(geom)
             else:
-                filled = self.fill_raster_holes(slope_sub, 10000, ndval)
+                filled = self.fill_raster_holes(slope_sub, 30000, ndval)
                 print filled[0:10, 0:10]
                 self.raster_to_shp(filled, dem)
                 #poly = gpd.read_file(self.scratch + '/poly' + str(i))
