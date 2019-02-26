@@ -20,6 +20,7 @@ class VBET:
     def __init__(self, **kwargs):
 
         self.network = gpd.read_file(kwargs['network'])
+        self.streams = kwargs['network']
         self.dem = kwargs['dem']
         self.out = kwargs['out']
         self.scratch = kwargs['scratch']
@@ -35,10 +36,17 @@ class VBET:
         self.dr_area = kwargs['dr_area']
         self.lg_depth = kwargs['lg_depth']
         self.med_depth = kwargs['med_depth']
+        self.sm_depth = kwargs['sm_depth']
 
         self.crs_out = self.network.crs
 
         self.polygons = []
+
+        network_geom = self.network['geometry']
+        min_buf = network_geom.buffer(self.min_buf)
+
+        for x in range(len(min_buf)):
+            self.polygons.append(min_buf[x])
 
     def add_da(self):
         """
@@ -57,7 +65,7 @@ class VBET:
             pt = Point(mid_pt_x, mid_pt_y)
             buf = pt.buffer(50)
 
-            zs = zonal_stats(buf, self.dem, stats='max')
+            zs = zonal_stats(buf, self.dr_area, stats='max')
             da_val = zs[0].get('max')
 
             da_list.append(da_val)
@@ -68,33 +76,6 @@ class VBET:
         # maybe add this..? would have to add network topology
 
         return
-
-    # def add_elev(self):
-    #     """
-    #     Adds a median stream elevation value to each segment of the drainage network
-    #     :return:
-    #     """
-    #     elev_list = []
-    #
-    #     for i in self.network.index:
-    #         segment = self.network.loc[i]
-    #
-    #         seg_geom = segment['geometry']
-    #         pos = int(len(seg_geom.coords.xy[0]) / 2)
-    #         mid_pt_x = seg_geom.coords.xy[0][pos]
-    #         mid_pt_y = seg_geom.coords.xy[1][pos]
-    #
-    #         pt = Point(mid_pt_x, mid_pt_y)
-    #         buf = pt.buffer(20)
-    #
-    #         zs = zonal_stats(buf, self.dem, stats='min')
-    #         elev_val = zs[0].get('min')
-    #
-    #         elev_list.append(elev_val)
-    #
-    #     self.network['Elev'] = elev_list
-    #
-    #     return
 
     def slope(self, dem):
         """
@@ -122,7 +103,7 @@ class VBET:
 
         return slope
 
-    def detrend(self, dem, seg_geom, offset):
+    def detrend(self, dem, seg_geom):
         with rasterio.open(dem) as src:
             meta = src.profile
             arr = src.read()[0, :, :]
@@ -292,10 +273,13 @@ class VBET:
         #df.to_file(shp_out)
         geom = df['geometry']
 
+        area = []
+
         for x in range(len(geom)):
+            area.append(geom[x].area)
             self.polygons.append(geom[x])
 
-        return
+        return sum(area)
 
     def getFeatures(self, gdf):
         """Function to parse features from GeoDataFrame in such a manner that rasterio wants them"""
@@ -354,32 +338,27 @@ class VBET:
             else:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
-            detr = self.detrend(dem, geom, self.med_buf)  # might want to change this offset
+            # only detrend if depth is being used
+            detr = self.detrend(dem, geom)  # might want to change this offset
 
             if da >= self.lg_da:
                 depth = self.reclassify(detr, ndval, self.lg_depth)
             elif da < self.lg_da and da >= self.med_da:
                 depth = self.reclassify(detr, ndval, self.med_depth)
             else:
-                depth = None
+                depth = self.reclassify(detr, ndval, self.sm_depth)
 
-            if depth is not None:
-                overlap = self.raster_overlap(slope_sub, depth, ndval)
-                filled = self.fill_raster_holes(overlap, 30000, ndval)
-                self.raster_to_shp(filled, dem)
-                #poly = gpd.read_file(self.scratch + '/poly' + str(i))
-                #poly_geom = poly.loc[0, 'geometry']
-                #polygons.append(geom)
-            else:
-                filled = self.fill_raster_holes(slope_sub, 30000, ndval)
-                print filled[0:10, 0:10]
-                self.raster_to_shp(filled, dem)
-                #poly = gpd.read_file(self.scratch + '/poly' + str(i))
-                #poly_geom = poly.loc[0, 'geometry']
-                #polygons.append(geom)
+            overlap = self.raster_overlap(slope_sub, depth, ndval)
+            filled = self.fill_raster_holes(overlap, 30000, ndval)
+            a = self.raster_to_shp(filled, dem)
+            self.network.loc[i, 'fp_area'] = a
+
+        self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
         vb = gpd.GeoSeries(cascaded_union(self.polygons))
         vb.crs = self.crs_out
         vb.to_file(self.out)
+
+        return
 
