@@ -2,23 +2,23 @@ import VBET
 
 
 params = {
-    'network': '/home/jordan/Documents/lost_horse/NHD_Lost_Horse.shp',
-    'dem': '/home/jordan/Documents/lost_horse/output_be.tif',
-    'out': '/home/jordan/Documents/lost_horse/vb_lh.shp',
-    'scratch': '/home/jordan/Documents/lost_horse/scratch',
+    'network': '/home/jordan/Documents/Geoscience/LH/NHD_LH_sub.shp',
+    'dem': '/home/jordan/Documents/Geoscience/LH/output_be.tif',
+    'out': '/home/jordan/Documents/Geoscience/LH/vb_lh.shp',
+    'scratch': '/home/jordan/Documents/Geoscience/LH/scratch',
     'lg_da': 250,
-    'med_da': 25,
+    'med_da': 10,
     'lg_slope': 2,
     'med_slope': 4,
     'sm_slope': 6,
     'lg_buf': 250,
-    'med_buf': 150,
-    'sm_buf': 100,
+    'med_buf': 100,
+    'sm_buf': 50,
     'min_buf': 8,
-    'dr_area': '/home/jordan/Documents/lost_horse/topo/DrArea_Lost_Horse.tif',
+    'dr_area': '/home/jordan/Documents/Geoscience/LH/LH_DrArea.tif',
     'lg_depth': 2,
-    'med_depth': 1.5,
-    'sm_depth': 1.
+    'med_depth': 2,
+    'sm_depth': 1.75
 }
 
 vb = VBET.VBET(**params)

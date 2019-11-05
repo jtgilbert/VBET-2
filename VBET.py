@@ -3,12 +3,13 @@ import geopandas as gpd
 import rasterio
 import rasterio.mask
 from rasterio.features import shapes
-from shapely.geometry import Point, LineString
+from shapely.geometry import Point, LineString, Polygon
 from shapely.ops import cascaded_union
 from rasterstats import zonal_stats
 import numpy as np
 import skimage.morphology as mo
 from scipy.signal import convolve2d
+from scipy.linalg import lstsq
 import json
 
 
@@ -23,7 +24,7 @@ class VBET:
         self.streams = kwargs['network']
         self.dem = kwargs['dem']
         self.out = kwargs['out']
-        self.scratch = kwargs['scratch']
+        self.scratch = kwargs['scratch']  # make so if dir doesnt exist, script creates it
         self.lg_da = kwargs['lg_da']
         self.med_da = kwargs['med_da']
         self.lg_slope = kwargs['lg_slope']
@@ -114,14 +115,14 @@ class VBET:
             y_min = y_max - (src.height*res_y)
 
         # points along network in real coords
-        _xs = seg_geom.xy[0][::3]
-        _ys = seg_geom.xy[1][::3]
+        _xs = seg_geom.xy[0][::2]
+        _ys = seg_geom.xy[1][::2]
 
         zs = np.zeros_like(_xs)
 
         for i in range(len(_xs)):
             pt = Point(_xs[i], _ys[i])
-            buf = pt.buffer(4)
+            buf = pt.buffer(5)
             zonal = zonal_stats(buf, dem, stats='min')
             val = zonal[0].get('min')
 
@@ -135,22 +136,28 @@ class VBET:
             xs[i] = int((_xs[i] - x_min) / res_x)  # column in array space
             ys[i] = int((y_max - _ys[i]) / res_y)  # row in array space
 
+        xs = xs[np.isfinite(zs)]
+        ys = ys[np.isfinite(zs)]
+        zs = zs[np.isfinite(zs)]  # its currently possible to use only 2 points..?
+
         # do fit
         tmp_A = []
         tmp_b = []
         for i in range(len(xs)):
             tmp_A.append([xs[i], ys[i], 1])
             tmp_b.append(zs[i])
-        b = np.matrix(tmp_b).T
-        A = np.matrix(tmp_A)
-        fit = (A.T * A).I * A.T * b
-        errors = b - A * fit
-        residual = np.linalg.norm(errors)
+        b = np.array(tmp_b).T
+        A = np.array(tmp_A)
+        fit = lstsq(A, b)
+
+        #fit = (A.T * A).I * A.T * b
+        #errors = b - A * fit
+        #residual = np.linalg.norm(errors)
 
         trend = np.full((src.height, src.width), src.nodata, dtype=src.dtypes[0])
         for j in range(trend.shape[0]):
             for i in range(trend.shape[1]):
-                trend[j, i] = fit[0] * i + fit[1] * j + fit[2]
+                trend[j, i] = fit[0][0] * i + fit[0][1] * j + fit[0][2]
 
         out_arr = arr - trend
 
@@ -286,6 +293,20 @@ class VBET:
 
         return [json.loads(gdf.to_json())['features'][0]['geometry']]
 
+    def chaikins_corner_cutting(self, coords, refinements=5):
+        coords = np.array(coords)
+
+        for _ in range(refinements):
+            L = coords.repeat(2, axis=0)
+            R = np.empty_like(L)
+            R[0] = L[0]
+            R[2::2] = L[1:-1:2]
+            R[1:-1:2] = L[2::2]
+            R[-1] = L[-1]
+            coords = L * 0.75 + R * 0.25
+
+        return coords
+
     def valley_bottom(self):
         """
         Run the VBET algorithm
@@ -297,7 +318,7 @@ class VBET:
             da = seg['Drain_Area']
             geom = seg['geometry']
 
-            print i
+            print 'segment ', i+1, ' of ', len(self.network.index)
 
             ept1 = (geom.boundary[0].xy[0][0], geom.boundary[0].xy[1][0])
             ept2 = (geom.boundary[1].xy[0][0], geom.boundary[1].xy[1][0])
@@ -356,9 +377,27 @@ class VBET:
         self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
-        vb = gpd.GeoSeries(cascaded_union(self.polygons))
+        vb = gpd.GeoSeries(cascaded_union(self.polygons))  #
         vb.crs = self.crs_out
         vb.to_file(self.out)
+
+        # get rid of small unattached polygons
+        vb1 = gpd.read_file(self.out)
+        vbm2s = vb1.explode()
+        sub = vbm2s['geometry'].area >= 0.25*vbm2s['geometry'].area.max()
+        vbcut = vbm2s[sub]
+
+        vbcut.to_file(self.out)
+
+        # simplify and smooth polygon
+        vbc = gpd.read_file(self.out)
+        vbc = vbc.simplify(3, preserve_topology=True) # make number a function of dem resolution
+        coords = list(vbc.geometry.exterior[0].coords)
+        new_coords = self.chaikins_corner_cutting(coords)
+        poly = Polygon(new_coords)
+        vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[poly])
+
+        vbf.to_file(self.out)
 
         return
 
