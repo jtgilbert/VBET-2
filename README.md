@@ -1,5 +1,5 @@
-# VBET-2
-Updated Valley Bottom Extraction Tool
+# VBET 2.0
+Valley Bottom Extraction Tool (upated: 11/5/2019)
 
 VBET uses a stream network shapefile and digital elevation model to derive a valley bottom polygon based on two lines of evidence: slope and inundation depth. The values for these parameters are adjusted based on the drainage area of a given segment of the network based on the generalizations that at lower drainage areas, slopes within valley bottoms are generally steeper than at high drainage areas, where slopes tend to be very flat in valley bottoms, and that high in the network, at low drainage areas, flood depths tend to be shallower than at low drainage area, larger portions of the network.
 
@@ -17,7 +17,7 @@ Fill out the parameters as described below, and run the script.
 ## Parameters 
 
 - network: enter the path to the stream network shapefile. This can be e.g. the National Hydrologic Dataset (NHD), extracted from a DEM, or manually delineated by the user.
-- dem: enter the path to the DEM from which you wish to derive the valley bottom polygon. 
+- dem: enter the path to the DEM from which you wish to derive the valley bottom polygon (.tif preferred). 
 - out: enter a path and file name to store the valley bottom shapefile produced by the tool.
 - scratch: enter a path to a scratch workspace folder where temporary files will be stored. If the entered folder does not exist it will be created.
 - lg_da: enter a value (int) for a drainage area threshold above which the network will be considered 'large'.
@@ -28,11 +28,11 @@ Fill out the parameters as described below, and run the script.
 - lg_buf: enter a value representing the maximum distance from the large portion of the network within which valley bottoms occur.
 - med_buf: enter a value representing the maximum distance from the medium portion of the network within which valley bottoms occur.
 - sm_buf: enter a value representing the maximum distance from the small portion of the network within which valley bottoms occur.
-- dr_area: enter the path to the drainage area raster for the basin.
+- dr_area: enter the path to the drainage area raster for the basin (.tif preferred).
 - lg_depth: enter a value for the depth threshold of the large portion of the network.
 - med_depth: enter a value for the depth threshold of the medium portion of the network.
 - sm_depth: enter a value for the depth threshold of the small portion of the network.
 
-Note: the depth parameters are not required; VBET can run based only on slope (the first version did), but results are generally significantly better by improving slope (hence the update).
+Note: the depth parameters are not required; VBET can run based only on slope (the first version did), but results are generally significantly better by including depth (hence the update).
 
 ![VBET Output image](/pics/vbet_output.png)
