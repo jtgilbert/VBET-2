@@ -34,3 +34,5 @@ Fill out the parameters as described below, and run the script.
 - sm_depth: enter a value for the depth threshold of the small portion of the network.
 
 Note: the depth parameters are not required; VBET can run based only on slope (the first version did), but results are generally significantly better by improving slope (hence the update).
+
+![VBET Output image](/pics/vbet_output.png)
