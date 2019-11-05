@@ -11,6 +11,7 @@ import skimage.morphology as mo
 from scipy.signal import convolve2d
 from scipy.linalg import lstsq
 import json
+import os.path
 
 
 class VBET:
@@ -40,6 +41,20 @@ class VBET:
         self.sm_depth = kwargs['sm_depth']
 
         self.crs_out = self.network.crs
+
+        # check that scratch directory exists, make if not
+        if os.path.exists(self.scratch):
+            pass
+        else:
+            os.mkdir(self.scratch)
+
+        # check that all depth params have a value or are None
+        if self.lg_depth is None and (self.med_depth is not None or self.sm_depth is not None):
+            raise Exception('All depths (lg, med, sm) must have value or be None')
+        elif self.med_depth is None and (self.lg_depth is not None or self.sm_depth is not None):
+            raise Exception('All depths (lg, med, sm) must have value or be None')
+        elif self.sm_depth is None and (self.lg_depth is not None or self.med_depth is not None):
+            raise Exception('All depths (lg, med, sm) must have value or be None')
 
         self.polygons = []
 
@@ -73,9 +88,6 @@ class VBET:
 
         self.network['Drain_Area'] = da_list
 
-        # check for segments with lower DA value than upstream segment
-        # maybe add this..? would have to add network topology
-
         return
 
     def slope(self, dem):
@@ -86,7 +98,6 @@ class VBET:
         """
         with rasterio.open(dem, 'r') as src:
             arr = src.read()[0, :, :]
-
             xres = src.res[0]
             yres = src.res[1]
 
@@ -150,10 +161,6 @@ class VBET:
         A = np.array(tmp_A)
         fit = lstsq(A, b)
 
-        #fit = (A.T * A).I * A.T * b
-        #errors = b - A * fit
-        #residual = np.linalg.norm(errors)
-
         trend = np.full((src.height, src.width), src.nodata, dtype=src.dtypes[0])
         for j in range(trend.shape[0]):
             for i in range(trend.shape[1]):
@@ -182,8 +189,10 @@ class VBET:
                     out_array[j, i] = ndval
                 elif array[j, i] > thresh:
                     out_array[j, i] = ndval
-                else:
+                elif thresh >= array[j, i] > 0:
                     out_array[j, i] = 1
+                else:
+                    array[j, i] = ndval
 
         return out_array
 
@@ -231,7 +240,7 @@ class VBET:
         out_array = np.full(d.shape, ndval, dtype=np.float32)
         for j in range(0, d.shape[0] - 1):
             for i in range(0, d.shape[1] - 1):
-                if d[j, i] == True:
+                if d[j, i] is True:
                     out_array[j, i] = 1.
 
         return out_array
@@ -277,7 +286,6 @@ class VBET:
 
         df = gpd.GeoDataFrame.from_features(geoms)
         df.crs = crs
-        #df.to_file(shp_out)
         geom = df['geometry']
 
         area = []
@@ -360,38 +368,43 @@ class VBET:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
             # only detrend if depth is being used
-            detr = self.detrend(dem, geom)  # might want to change this offset
+            if self.med_depth is not None:
+                detr = self.detrend(dem, geom)  # might want to change this offset
 
-            if da >= self.lg_da:
-                depth = self.reclassify(detr, ndval, self.lg_depth)
-            elif da < self.lg_da and da >= self.med_da:
-                depth = self.reclassify(detr, ndval, self.med_depth)
+                if da >= self.lg_da:
+                    depth = self.reclassify(detr, ndval, self.lg_depth)
+                elif da < self.lg_da and da >= self.med_da:
+                    depth = self.reclassify(detr, ndval, self.med_depth)
+                else:
+                    depth = self.reclassify(detr, ndval, self.sm_depth)
+
+                overlap = self.raster_overlap(slope_sub, depth, ndval)
+                filled = self.fill_raster_holes(overlap, 30000, ndval)
+                a = self.raster_to_shp(filled, dem)
+                self.network.loc[i, 'fp_area'] = a
             else:
-                depth = self.reclassify(detr, ndval, self.sm_depth)
-
-            overlap = self.raster_overlap(slope_sub, depth, ndval)
-            filled = self.fill_raster_holes(overlap, 30000, ndval)
-            a = self.raster_to_shp(filled, dem)
-            self.network.loc[i, 'fp_area'] = a
+                filled = self.fill_raster_holes(slope_sub, 15000, ndval)
+                a = self.raster_to_shp(filled, dem)
+                self.network.loc[i, 'fp_area'] = a
 
         self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
         vb = gpd.GeoSeries(cascaded_union(self.polygons))  #
         vb.crs = self.crs_out
-        vb.to_file(self.out)
+        vb.to_file(self.scratch + "/tempvb.shp")
 
         # get rid of small unattached polygons
-        vb1 = gpd.read_file(self.out)
+        vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
         vbm2s = vb1.explode()
         sub = vbm2s['geometry'].area >= 0.25*vbm2s['geometry'].area.max()
         vbcut = vbm2s[sub]
 
-        vbcut.to_file(self.out)
+        vbcut.to_file(self.scratch + "/tempvb.shp")
 
         # simplify and smooth polygon
-        vbc = gpd.read_file(self.out)
-        vbc = vbc.simplify(3, preserve_topology=True) # make number a function of dem resolution
+        vbc = gpd.read_file(self.scratch + "/tempvb.shp")
+        vbc = vbc.simplify(3, preserve_topology=True)  # make number a function of dem resolution
         coords = list(vbc.geometry.exterior[0].coords)
         new_coords = self.chaikins_corner_cutting(coords)
         poly = Polygon(new_coords)
