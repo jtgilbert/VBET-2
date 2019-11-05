@@ -5,6 +5,15 @@ VBET uses a stream network shapefile and digital elevation model to derive a val
 
 As such, the user selects to drainage area threshold values that are used to split the network into 'large', 'medium' and 'small' portions. The user then selects threshold values for slope and inundation depth for each of the three portions of the network.
 
+## Required Python packages
+- geopandas
+- rasterio
+- shapely
+- rasterstats
+- numpy 
+- scipy
+- scikit-image
+
 ## Data preparation
 Because the tool relies on drainage area, a drainage area raster is required to run the tool. To be accurate, this raster must encompass the entire watershed upstream of the area for which a valley bottom is being delineated. In cases where a small LiDAR dataset is being used to delineate valley bottoms for a portion of a drainage network, a coarser DEM of the entire basin (e.g. the 10m DEMs of the NED from USGS) should be used to generate this raster. This can be accomplished using the common GIS workflow of filling the pits in the DEM, generating flow directions, and then a flow accumulation raster. The flow accumulation raster can be converted to drainage area in a raster calculator using the equation (flow_accumulation * (flow_accumulation_raster_resolution^2))/1000000.
 
