@@ -1,13 +1,14 @@
 # VBET 2.0
-Valley Bottom Extraction Tool (upated: 11/5/2019)
+Valley Bottom Extraction Tool (upated: 7/22/2020)
 
 VBET uses a stream network shapefile and digital elevation model to derive a valley bottom polygon based on two lines of evidence: slope and inundation depth. The values for these parameters are adjusted based on the drainage area of a given segment of the network based on the generalizations that at lower drainage areas, slopes within valley bottoms are generally steeper than at high drainage areas, where slopes tend to be very flat in valley bottoms, and that high in the network, at low drainage areas, flood depths tend to be shallower than at low drainage area, larger portions of the network.
 
 As such, the user selects to drainage area threshold values that are used to split the network into 'large', 'medium' and 'small' portions. The user then selects threshold values for slope and inundation depth for each of the three portions of the network.
 
 ## Required Python packages
-- geopandas
-- rasterio
+### Python 3
+- geopandas (v. 0.8.0)
+- rasterio (v. 1.1.1)
 - shapely
 - rasterstats
 - numpy 
