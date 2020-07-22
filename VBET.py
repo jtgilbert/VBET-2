@@ -119,10 +119,10 @@ class VBET:
         with rasterio.open(dem) as src:
             meta = src.profile
             arr = src.read()[0, :, :]
-            res_x = abs(src.transform[1])
-            res_y = abs(src.transform[5])
-            x_min = src.transform[0]
-            y_max = src.transform[3]
+            res_x = src.res[0]
+            res_y = src.res[1]
+            x_min = src.transform[2]
+            y_max = src.transform[5]
             y_min = y_max - (src.height*res_y)
 
         # points along network in real coords
@@ -240,7 +240,7 @@ class VBET:
         out_array = np.full(d.shape, ndval, dtype=np.float32)
         for j in range(0, d.shape[0] - 1):
             for i in range(0, d.shape[1] - 1):
-                if d[j, i] is True:
+                if d[j, i] == True:
                     out_array[j, i] = 1.
 
         return out_array
@@ -273,7 +273,7 @@ class VBET:
         :return:
         """
         with rasterio.open(raster_like) as src:
-            transform = src.affine
+            transform = src.transform
             crs = src.crs
 
         results = (
@@ -283,6 +283,8 @@ class VBET:
                 shapes(array, mask=array == 1., transform=transform)))
 
         geoms = list(results)
+        if len(geoms) == 0:
+            raise Exception('No raster cells to convert to shapefile, try changing model parameters')
 
         df = gpd.GeoDataFrame.from_features(geoms)
         df.crs = crs
@@ -326,7 +328,7 @@ class VBET:
             da = seg['Drain_Area']
             geom = seg['geometry']
 
-            print 'segment ', i+1, ' of ', len(self.network.index)
+            print('segment ', i+1, ' of ', len(self.network.index))
 
             ept1 = (geom.boundary[0].xy[0][0], geom.boundary[0].xy[1][0])
             ept2 = (geom.boundary[1].xy[0][0], geom.boundary[1].xy[1][0])
@@ -334,7 +336,7 @@ class VBET:
 
             if da >= self.lg_da:
                 buf = line.buffer(self.lg_buf, cap_style=1)
-            elif da < self.lg_da and da >= self.med_da:
+            elif self.lg_da > da >= self.med_da:
                 buf = line.buffer(self.med_buf, cap_style=1)
             else:
                 buf = line.buffer(self.sm_buf, cap_style=1)
@@ -362,7 +364,7 @@ class VBET:
 
             if da >= self.lg_da:
                 slope_sub = self.reclassify(slope, ndval, self.lg_slope)
-            elif da < self.lg_da and da >= self.med_da:
+            elif self.lg_da > da >= self.med_da:
                 slope_sub = self.reclassify(slope, ndval, self.med_slope)
             else:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
@@ -373,7 +375,7 @@ class VBET:
 
                 if da >= self.lg_da:
                     depth = self.reclassify(detr, ndval, self.lg_depth)
-                elif da < self.lg_da and da >= self.med_da:
+                elif self.lg_da > da >= self.med_da:
                     depth = self.reclassify(detr, ndval, self.med_depth)
                 else:
                     depth = self.reclassify(detr, ndval, self.sm_depth)
