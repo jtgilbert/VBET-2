@@ -14,7 +14,7 @@ params = {
     'lg_buf': 500,
     'med_buf': 200,
     'sm_buf': 100,
-    'min_buf': 8,
+    'min_buf': 10,
     'dr_area': '/path/to/drainage/area/raster.tif',
     'lg_depth': 2,
     'med_depth': 1.5,

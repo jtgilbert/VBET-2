@@ -3,8 +3,8 @@ import geopandas as gpd
 import rasterio
 import rasterio.mask
 from rasterio.features import shapes
-from shapely.geometry import Point, LineString, Polygon
-from shapely.ops import cascaded_union
+from shapely.geometry import Point, LineString, Polygon, MultiPolygon
+from shapely.ops import unary_union
 from rasterstats import zonal_stats
 import numpy as np
 import skimage.morphology as mo
@@ -56,6 +56,15 @@ class VBET:
         elif self.sm_depth is None and (self.lg_depth is not None or self.med_depth is not None):
             raise Exception('All depths (lg, med, sm) must have value or be None')
 
+        # check that there are no segments with less than 5 vertices
+        few_verts = []
+        for i in range(len(self.network)):
+            if len(self.network.loc[i].geometry.xy[0]) <= 5:
+                few_verts.append(i)
+        if len(few_verts) > 0:
+            raise Exception("Network segments with IDs ", few_verts, "don't have enough vertices for DEM detrending. "
+                                                                     "Add vertices in GIS")
+
         self.polygons = []
 
         network_geom = self.network['geometry']
@@ -69,6 +78,7 @@ class VBET:
         Adds a drainage area attribute to each segment of the drainage network
         :return:
         """
+        print('Adding drainage area to network')
         da_list = []
 
         for i in self.network.index:
@@ -79,7 +89,7 @@ class VBET:
             mid_pt_y = geom.coords.xy[1][pos]
 
             pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.buffer(50)
+            buf = pt.buffer(50)  # make buffer distance function of resolution (e.g. 5*res)
 
             zs = zonal_stats(buf, self.dr_area, stats='max')
             da_val = zs[0].get('max')
@@ -284,19 +294,21 @@ class VBET:
 
         geoms = list(results)
         if len(geoms) == 0:
-            raise Exception('No raster cells to convert to shapefile, try changing model parameters')
+            return 0
+            #raise Exception('No raster cells to convert to shapefile, try changing model parameters')
 
-        df = gpd.GeoDataFrame.from_features(geoms)
-        df.crs = crs
-        geom = df['geometry']
+        else:
+            df = gpd.GeoDataFrame.from_features(geoms)
+            df.crs = crs
+            geom = df['geometry']
 
-        area = []
+            area = []
 
-        for x in range(len(geom)):
-            area.append(geom[x].area)
-            self.polygons.append(geom[x])
+            for x in range(len(geom)):
+                area.append(geom[x].area)
+                self.polygons.append(geom[x])
 
-        return sum(area)
+            return sum(area)
 
     def getFeatures(self, gdf):
         """Function to parse features from GeoDataFrame in such a manner that rasterio wants them"""
@@ -381,32 +393,38 @@ class VBET:
                     depth = self.reclassify(detr, ndval, self.sm_depth)
 
                 overlap = self.raster_overlap(slope_sub, depth, ndval)
-                filled = self.fill_raster_holes(overlap, 30000, ndval)
+                filled = self.fill_raster_holes(overlap, 2000, ndval)
                 a = self.raster_to_shp(filled, dem)
                 self.network.loc[i, 'fp_area'] = a
             else:
-                filled = self.fill_raster_holes(slope_sub, 15000, ndval)
+                filled = self.fill_raster_holes(slope_sub, 2000, ndval)
                 a = self.raster_to_shp(filled, dem)
                 self.network.loc[i, 'fp_area'] = a
 
         self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
-        vb = gpd.GeoSeries(cascaded_union(self.polygons))  #
+        vb = gpd.GeoSeries(unary_union(self.polygons))  #
         vb.crs = self.crs_out
         vb.to_file(self.scratch + "/tempvb.shp")
 
         # get rid of small unattached polygons
         vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
         vbm2s = vb1.explode()
-        sub = vbm2s['geometry'].area >= 0.25*vbm2s['geometry'].area.max()
-        vbcut = vbm2s[sub]
-
+        sub = vbm2s['geometry'].area >= 0.05*vbm2s['geometry'].area.max()
+        vbcut = vbm2s[sub].reset_index(drop=True)
         vbcut.to_file(self.scratch + "/tempvb.shp")
+        # do it a second time?
+        vb2 = gpd.read_file(self.scratch + "/tempvb.shp")
+        vbm2s2 = vb2.explode()
+        sub2 = vbm2s2['geometry'].area >= 0.05*vbm2s2['geometry'].area.max()
+        vbcut2 = vbm2s2[sub2].reset_index(drop=True)
+        vbcut2.to_file(self.scratch + "/tempvb.shp")
 
         # simplify and smooth polygon
         vbc = gpd.read_file(self.scratch + "/tempvb.shp")
         vbc = vbc.simplify(3, preserve_topology=True)  # make number a function of dem resolution
+
         coords = list(vbc.geometry.exterior[0].coords)
         new_coords = self.chaikins_corner_cutting(coords)
         poly = Polygon(new_coords)
