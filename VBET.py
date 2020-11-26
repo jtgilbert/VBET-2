@@ -4,7 +4,7 @@ import rasterio
 import rasterio.mask
 from rasterio.features import shapes
 from shapely.geometry import Point, LineString, Polygon, MultiPolygon
-from shapely.ops import unary_union
+from shapely.ops import unary_union, cascaded_union
 from rasterstats import zonal_stats
 import numpy as np
 import skimage.morphology as mo
@@ -404,31 +404,44 @@ class VBET:
         self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
-        vb = gpd.GeoSeries(unary_union(self.polygons))  #
+        print("Creating valley bottom")
+        vb = gpd.GeoSeries(cascaded_union(self.polygons))  #
         vb.crs = self.crs_out
         vb.to_file(self.scratch + "/tempvb.shp")
+
+        # simplify and smooth polygon
+        print("Cleaning valley bottom")
+        vbc = gpd.read_file(self.scratch + "/tempvb.shp")
+        vbc = vbc.simplify(3, preserve_topology=True)  # make number a function of dem resolution
+        vbc.to_file(self.scratch + "/tempvb.shp")
 
         # get rid of small unattached polygons
         vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
         vbm2s = vb1.explode()
-        sub = vbm2s['geometry'].area >= 0.05*vbm2s['geometry'].area.max()
+        sub = vbm2s['geometry'].area >= 0.001*vbm2s['geometry'].area.max()
         vbcut = vbm2s[sub].reset_index(drop=True)
         vbcut.to_file(self.scratch + "/tempvb.shp")
         # do it a second time?
-        vb2 = gpd.read_file(self.scratch + "/tempvb.shp")
-        vbm2s2 = vb2.explode()
-        sub2 = vbm2s2['geometry'].area >= 0.05*vbm2s2['geometry'].area.max()
-        vbcut2 = vbm2s2[sub2].reset_index(drop=True)
-        vbcut2.to_file(self.scratch + "/tempvb.shp")
+        #vb2 = gpd.read_file(self.scratch + "/tempvb.shp")
+        #vbm2s2 = vb2.explode()
+        #sub2 = vbm2s2['geometry'].area >= 0.05*vbm2s2['geometry'].area.max()
+        #vbcut2 = vbm2s2[sub2].reset_index(drop=True)
+        #vbcut2.to_file(self.scratch + "/tempvb.shp")
 
-        # simplify and smooth polygon
-        vbc = gpd.read_file(self.scratch + "/tempvb.shp")
-        vbc = vbc.simplify(3, preserve_topology=True)  # make number a function of dem resolution
+        # TRY THIS - have to dissolve before chaikins
 
-        coords = list(vbc.geometry.exterior[0].coords)
-        new_coords = self.chaikins_corner_cutting(coords)
-        poly = Polygon(new_coords)
-        vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[poly])
+        polys = []
+        for i in vbcut.index:
+            coords = list(vbcut.loc[i].geometry.exterior.coords)  # vbcut WAS vbc when using shapely simplify.
+            new_coords = self.chaikins_corner_cutting(coords)
+            polys.append(Polygon(new_coords))
+
+        if len(polys) > 1:
+            p = MultiPolygon(polys)
+        else:
+            p = polys[0]
+
+        vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[p])
 
         vbf.to_file(self.out)
 

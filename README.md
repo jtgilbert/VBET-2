@@ -1,7 +1,7 @@
 # VBET 2.0
-Valley Bottom Extraction Tool (upated: 09/23/2020)
+Valley Bottom Extraction Tool (upated: 11/25/2020)
 
-VBET uses a stream network shapefile and digital elevation model to derive a valley bottom polygon based on two lines of evidence: slope and inundation depth. The values for these parameters are adjusted based on the drainage area of a given segment of the network based on the generalizations that at lower drainage areas, slopes within valley bottoms are generally steeper than at high drainage areas, where slopes tend to be very flat in valley bottoms, and that high in the network, at low drainage areas, flood depths tend to be shallower than at low drainage area, larger portions of the network.
+VBET uses a stream network shapefile and digital elevation model to derive a valley bottom polygon based on two lines of evidence: slope and inundation depth. The values for these parameters are adjusted based on the drainage area of a given segment of the network based on the generalizations that at lower drainage areas (small streams), slopes within valley bottoms are generally steeper than at high drainage areas (larger rivers), where slopes tend to be very flat in valley bottoms; and also that high in the network, at low drainage areas, flood depths tend to be shallower than in larger portions of the network.
 
 As such, the user selects to drainage area threshold values that are used to split the network into 'large', 'medium' and 'small' portions. The user then selects threshold values for slope and inundation depth for each of the three portions of the network.
 
@@ -46,3 +46,8 @@ Fill out the parameters as described below, and run the script.
 Note: the depth parameters are not required; VBET can run based only on slope (the first version did), but results are generally significantly better by including depth (hence the update).
 
 ![VBET Output image](/pics/vbet_output.png)
+
+![VBET Reach image](/pics/vbet_bitterroot.png)
+
+![VBET Basin image](/pics/vbet_basin.png)
+
