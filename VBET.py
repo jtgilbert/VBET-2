@@ -245,7 +245,7 @@ class VBET:
 
         b = mo.remove_small_holes(binary, thresh, 1)
         c = mo.binary_closing(b, selem=np.ones((7, 7)))
-        d = mo.remove_small_holes(c, 500, 1)
+        d = mo.remove_small_holes(c, thresh, 1)
 
         out_array = np.full(d.shape, ndval, dtype=np.float32)
         for j in range(0, d.shape[0] - 1):
@@ -381,6 +381,18 @@ class VBET:
             else:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
+            # set thresholds for hole filling
+            seglengths = 0
+            for x in self.network.index:
+                seglengths += self.network.loc[x].geometry.length
+            avlen = int(seglengths / len(self.network))
+            if da < self.med_da:
+                thresh = avlen * self.sm_buf * 0.005
+            elif self.med_da <= da < self.lg_da:
+                thresh = avlen * self.med_buf * 0.005
+            else:  # da >= self.lg_da:
+                thresh = avlen * self.lg_buf * 0.005
+
             # only detrend if depth is being used
             if self.med_depth is not None:
                 detr = self.detrend(dem, geom)  # might want to change this offset
@@ -393,11 +405,11 @@ class VBET:
                     depth = self.reclassify(detr, ndval, self.sm_depth)
 
                 overlap = self.raster_overlap(slope_sub, depth, ndval)
-                filled = self.fill_raster_holes(overlap, 2000, ndval)
+                filled = self.fill_raster_holes(overlap, thresh, ndval)
                 a = self.raster_to_shp(filled, dem)
                 self.network.loc[i, 'fp_area'] = a
             else:
-                filled = self.fill_raster_holes(slope_sub, 2000, ndval)
+                filled = self.fill_raster_holes(slope_sub, thresh, ndval)
                 a = self.raster_to_shp(filled, dem)
                 self.network.loc[i, 'fp_area'] = a
 
