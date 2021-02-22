@@ -5,6 +5,11 @@ VBET uses a stream network shapefile and digital elevation model to derive a val
 
 As such, the user selects to drainage area threshold values that are used to split the network into 'large', 'medium' and 'small' portions. The user then selects threshold values for slope and inundation depth for each of the three portions of the network.
 
+### Known issues
+When deriving a stream network from a DEM, segments passing through lakes or resersvoirs sometimes are completely straight with no slope. These segments often give the tool trouble. For now, the best solution is to combine segments so that a segment encompasses more than the flat area, and therefore has some slope, and to manually add vertices and create some small amount of curvature so that it is not perfectly straight. 
+
+If additional issues are encountered, please report them in the GitHub Issues page for VBET 2.0.
+
 
 ## Data preparation
 Because the tool relies on drainage area, a drainage area raster is required to run the tool. To be accurate, this raster must encompass the entire watershed upstream of the area for which a valley bottom is being delineated. In cases where a small LiDAR dataset is being used to delineate valley bottoms for a portion of a drainage network, a coarser DEM of the entire basin (e.g. the 10m DEMs of the NED from USGS) should be used to generate this raster. This can be accomplished using the common GIS workflow of filling the pits in the DEM, generating flow directions, and then a flow accumulation raster. The flow accumulation raster can be converted to drainage area in a raster calculator using the equation (flow_accumulation * (flow_accumulation_raster_resolution^2))/1000000.
@@ -13,6 +18,8 @@ For the best results, the drainage network should align well with the DEM used. 
 
 ## Running the model
 To run the model, go to the releases tab and download the release appropriate for your OS (Windows 64 bit and Linux 64 bit available). Unzip the download folder in a chosen location. For windows, open the folder and double click on the VBET.exe to run the program. For Linux, open a command prompt inside the folder and type the command: ./VBET to run the program. 
+
+In addition to a shapefile of the valley bottom, the tool produces a text file with the same name as the output with "metadata" appended on the end that contains the files and parameter values used for that particular run of the tool.
 
 If you are using a different OS, or prefer to run the code manually in an IDE, you can download the repository and run it in an IDE. Configure a Python environment with the packages listed below, fill out the parameter values in the 'run_VBET.py' script and then run the script.
 
