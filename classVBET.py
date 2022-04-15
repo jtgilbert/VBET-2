@@ -12,6 +12,7 @@ from scipy.signal import convolve2d
 from scipy.linalg import lstsq
 import json
 import os.path
+from tqdm import tqdm
 
 
 class VBET:
@@ -36,10 +37,16 @@ class VBET:
         self.sm_buf = kwargs['sm_buf']
         self.min_buf = kwargs['min_buf']
         self.dr_area = kwargs['dr_area']
+        self.da_field = kwargs['da_field']
         self.lg_depth = kwargs['lg_depth']
         self.med_depth = kwargs['med_depth']
         self.sm_depth = kwargs['sm_depth']
 
+        # either use selected drainage area field, or pull drainage area from raster
+        if self.da_field is not None:
+            self.network['Drain_Area'] = self.network[self.da_field]
+
+        # set crs for output
         self.crs_out = self.network.crs
 
         # check that scratch directory exists, make if not
@@ -53,8 +60,9 @@ class VBET:
             raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
         if rasterio.open(self.dem).crs is None:
             raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-        if rasterio.open(self.dr_area).crs is None:
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+        if self.dr_area is not None:
+            if rasterio.open(self.dr_area).crs is None:
+                raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
 
         # check that all depth params have a value or are None
         if self.lg_depth is None and (self.med_depth is not None or self.sm_depth is not None):
@@ -66,13 +74,14 @@ class VBET:
 
         # check that there are no segments with less than 5 vertices
         few_verts = []
-        for i in range(len(self.network)):
+        for i in self.network.index:
             if len(self.network.loc[i].geometry.xy[0]) <= 5:
                 few_verts.append(i)
         if len(few_verts) > 0:
             raise Exception("Network segments with IDs ", few_verts, "don't have enough vertices for DEM detrending. "
                                                                      "Add vertices in GIS")
 
+        # add container for individual valley bottom features and add the minimum buffer into it
         self.polygons = []
 
         network_geom = self.network['geometry']
@@ -80,6 +89,11 @@ class VBET:
 
         for x in range(len(min_buf)):
             self.polygons.append(min_buf[x])
+
+        # save total network length for use in later parameter
+        self.seglengths = 0
+        for x in self.network.index:
+            self.seglengths += self.network.loc[x].geometry.length
 
     def add_da(self):
         """
@@ -212,6 +226,9 @@ class VBET:
                 else:
                     array[j, i] = ndval
 
+        if 1 not in out_array:
+            raise Exception('An output for this segment contains only nodata values; raise depth or slope thresholds')
+
         return out_array
 
     def raster_overlap(self, array1, array2, ndval):
@@ -343,12 +360,13 @@ class VBET:
         :return: saves a valley bottom shapefile
         """
 
-        for i in self.network.index:
+        print('Generating valley bottom for each network segment')
+        for i in tqdm(self.network.index):
             seg = self.network.loc[i]
             da = seg['Drain_Area']
             geom = seg['geometry']
 
-            print('segment ', i+1, ' of ', len(self.network.index))
+            # print('segment ', i+1, ' of ', len(self.network.index))
 
             ept1 = (geom.boundary[0].xy[0][0], geom.boundary[0].xy[1][0])
             ept2 = (geom.boundary[1].xy[0][0], geom.boundary[1].xy[1][0])
@@ -390,10 +408,7 @@ class VBET:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
             # set thresholds for hole filling
-            seglengths = 0
-            for x in self.network.index:
-                seglengths += self.network.loc[x].geometry.length
-            avlen = int(seglengths / len(self.network))
+            avlen = int(self.seglengths / len(self.network))
             if da < self.med_da:
                 thresh = avlen * self.sm_buf * 0.005
             elif self.med_da <= da < self.lg_da:
@@ -426,8 +441,8 @@ class VBET:
         self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
-        print("Creating valley bottom")
-        vb = gpd.GeoSeries(cascaded_union(self.polygons))  #
+        print("Merging valley bottom segments")
+        vb = gpd.GeoSeries(unary_union(self.polygons))  #
         vb.crs = self.crs_out
         vb.to_file(self.scratch + "/tempvb.shp")
 

@@ -5,29 +5,31 @@ from datetime import datetime
 class RunVBET:
     def __init__(self):
         self.params = {
-            'network': '/path/to/stream/network.shp',
-            'dem': '/path/to/dem.tif',
-            'out': '/path/to/save/output.shp',
-            'scratch': '/path/of/scratch/workspace',
+            'network': '/home/jordan/Documents/Riverscapes/scratch/clear_creek.shp',
+            'dem': '/home/jordan/Documents/Riverscapes/scratch/dem_10190004.tif',
+            'out': '/home/jordan/Documents/Riverscapes/scratch/10190004_vbet2.shp',
+            'scratch': '/home/jordan/Documents/Riverscapes/scratch/scratch',
             'lg_da': 300,
             'med_da': 30,
-            'lg_slope': 2,
-            'med_slope': 3,
-            'sm_slope': 4,
+            'lg_slope': 3,
+            'med_slope': 4,
+            'sm_slope': 5,
             'lg_buf': 500,
             'med_buf': 200,
             'sm_buf': 80,
             'min_buf': 10,
-            'dr_area': '/path/to/drainage/area/raster.tif',
-            'lg_depth': None,
-            'med_depth': None,
-            'sm_depth': None
+            'dr_area': None,
+            'da_field': 'TotDASqKm',
+            'lg_depth': 3,
+            'med_depth': 2,
+            'sm_depth': 1.5
             }
 
     def run(self):
         print('started: ', datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
         vb = classVBET.VBET(**self.params)
-        vb.add_da()
+        if self.params['da_field'] is None:
+            vb.add_da()
         vb.valley_bottom()
         print('ended: ', datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
         metatxt = '{out}_metadata.txt'.format(out=self.params['out'])
@@ -51,3 +53,7 @@ class RunVBET:
         md = open(metatxt, 'w+')
         md.writelines(L)
         md.close()
+
+
+# vbrun = RunVBET()
+# vbrun.run()
