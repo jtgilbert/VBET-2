@@ -453,9 +453,25 @@ class VBET:
         vbc.to_file(self.scratch + "/tempvb.shp")
 
         # get rid of small unattached polygons
+        self.network.to_file(self.scratch + "/dissnetwork.shp")
+        network2 = gpd.read_file(self.scratch + "/dissnetwork.shp")
+        network2['dissolve'] = 1
+        network2 = network2.dissolve('dissolve')
         vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
         vbm2s = vb1.explode()
-        sub = vbm2s['geometry'].area >= 0.001*vbm2s['geometry'].area.max()
+        sub = []
+        for i in vbm2s.index:
+            segs = 0
+            for j in network2.index:
+                if network2.loc[j].geometry.intersects(vbm2s.loc[i].geometry):
+                    segs += 1
+            if segs > 0:
+                sub.append(True)
+            else:
+                sub.append(False)
+
+
+        #sub = vbm2s['geometry'].area >= 0.001*vbm2s['geometry'].area.max()
         vbcut = vbm2s[sub].reset_index(drop=True)
         vbcut.to_file(self.scratch + "/tempvb.shp")
         # do it a second time?
@@ -479,6 +495,11 @@ class VBET:
             p = polys[0]
 
         vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[p])
+        vbf = vbf.explode()
+        areas = []
+        for i in vbf.index:
+            areas.append(vbf.loc[i].geometry.area/1000000.)
+        vbf['Area_km2'] = areas
 
         vbf.to_file(self.out)
 
