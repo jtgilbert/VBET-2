@@ -95,6 +95,33 @@ class VBET:
         for x in self.network.index:
             self.seglengths += self.network.loc[x].geometry.length
 
+    def clean_network(self):
+
+        print('Cleaning up drainage network for VBET input')
+        print('starting with {} network segments'.format(len(self.network)))
+        # minimum length - remove short segments
+        with rasterio.open(self.dem, 'r') as src:
+            xres = src.res[0]
+        self.network = self.network[self.network.geometry.length > 5*xres]
+
+        # get rid of perfectly straight segments
+        sin = []
+        for i in self.network.index:
+            seg_geom = self.network.loc[i, 'geometry']
+            x_coord1 = seg_geom.boundary[0].xy[0][0]
+            y_coord1 = seg_geom.boundary[0].xy[1][0]
+            x_coord2 = seg_geom.boundary[1].xy[0][0]
+            y_coord2 = seg_geom.boundary[1].xy[1][0]
+
+            dist = ((x_coord1 - x_coord2) ** 2 + (y_coord1 - y_coord2) ** 2) ** 0.5
+            sin_val = seg_geom.length / dist
+            sin.append(sin_val)
+        self.network['sinuos'] = sin
+
+        self.network = self.network[self.network['sinuos'] >= 1.00001]
+
+        print('cleaned to {} network segments'.format(len(self.network)))
+
     def add_da(self):
         """
         Adds a drainage area attribute to each segment of the drainage network
@@ -225,9 +252,6 @@ class VBET:
                     out_array[j, i] = 1
                 else:
                     array[j, i] = ndval
-
-        if 1 not in out_array:
-            raise Exception('An output for this segment contains only nodata values; raise depth or slope thresholds')
 
         return out_array
 
@@ -360,6 +384,8 @@ class VBET:
         :return: saves a valley bottom shapefile
         """
 
+        self.clean_network()
+
         print('Generating valley bottom for each network segment')
         for i in tqdm(self.network.index):
             seg = self.network.loc[i]
@@ -428,13 +454,19 @@ class VBET:
                     depth = self.reclassify(detr, ndval, self.sm_depth)
 
                 overlap = self.raster_overlap(slope_sub, depth, ndval)
-                filled = self.fill_raster_holes(overlap, thresh, ndval)
-                a = self.raster_to_shp(filled, dem)
-                self.network.loc[i, 'fp_area'] = a
+                if 1 in overlap:
+                    filled = self.fill_raster_holes(overlap, thresh, ndval)
+                    a = self.raster_to_shp(filled, dem)
+                    self.network.loc[i, 'fp_area'] = a
+                else:
+                    self.network.loc[i, 'fp_area'] = 0
             else:
-                filled = self.fill_raster_holes(slope_sub, thresh, ndval)
-                a = self.raster_to_shp(filled, dem)
-                self.network.loc[i, 'fp_area'] = a
+                if 1 in slope_sub:
+                    filled = self.fill_raster_holes(slope_sub, thresh, ndval)
+                    a = self.raster_to_shp(filled, dem)
+                    self.network.loc[i, 'fp_area'] = a
+                else:
+                    self.network.loc[i, 'fp_area'] = 0
 
             demsrc.close()
 
