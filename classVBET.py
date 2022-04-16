@@ -44,7 +44,11 @@ class VBET:
 
         # either use selected drainage area field, or pull drainage area from raster
         if self.da_field is not None:
-            self.network['Drain_Area'] = self.network[self.da_field]
+            if self.da_field not in self.network.columns:
+                raise Exception('Drainage Area field selected for input network does not exist, make sure it is '
+                                'entered correctly')
+            else:
+                self.network['Drain_Area'] = self.network[self.da_field]
 
         # set crs for output
         self.crs_out = self.network.crs
@@ -56,21 +60,17 @@ class VBET:
             os.mkdir(self.scratch)
 
         # check that datasets are in projected coordinate system
-        if self.network.crs is None:
+        if not self.network.crs.is_projected:
             raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-        if rasterio.open(self.dem).crs is None:
+        if not rasterio.open(self.dem).crs.is_projected:
             raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-        if self.dr_area is not None:
-            if rasterio.open(self.dr_area).crs is None:
+        if self.network.crs.to_string() != rasterio.open(self.dem).crs.to_string():
+            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+        if self.dr_area:
+            if not rasterio.open(self.dr_area).crs.is_projected:
                 raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-
-        # check that all depth params have a value or are None
-        if self.lg_depth is None and (self.med_depth is not None or self.sm_depth is not None):
-            raise Exception('All depths (lg, med, sm) must have value or be None')
-        elif self.med_depth is None and (self.lg_depth is not None or self.sm_depth is not None):
-            raise Exception('All depths (lg, med, sm) must have value or be None')
-        elif self.sm_depth is None and (self.lg_depth is not None or self.med_depth is not None):
-            raise Exception('All depths (lg, med, sm) must have value or be None')
+            if self.network.crs.to_string() != rasterio.open(self.dr_area).crs.to_string():
+                raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
 
         # check that there are no segments with less than 5 vertices
         few_verts = []
@@ -442,31 +442,23 @@ class VBET:
             else:  # da >= self.lg_da:
                 thresh = avlen * self.lg_buf * 0.005
 
-            # only detrend if depth is being used
-            if self.med_depth is not None:
-                detr = self.detrend(dem, geom)  # might want to change this offset
+            # detrend segment dem
+            detr = self.detrend(dem, geom)  # might want to change this offset
 
-                if da >= self.lg_da:
-                    depth = self.reclassify(detr, ndval, self.lg_depth)
-                elif self.lg_da > da >= self.med_da:
-                    depth = self.reclassify(detr, ndval, self.med_depth)
-                else:
-                    depth = self.reclassify(detr, ndval, self.sm_depth)
-
-                overlap = self.raster_overlap(slope_sub, depth, ndval)
-                if 1 in overlap:
-                    filled = self.fill_raster_holes(overlap, thresh, ndval)
-                    a = self.raster_to_shp(filled, dem)
-                    self.network.loc[i, 'fp_area'] = a
-                else:
-                    self.network.loc[i, 'fp_area'] = 0
+            if da >= self.lg_da:
+                depth = self.reclassify(detr, ndval, self.lg_depth)
+            elif self.lg_da > da >= self.med_da:
+                depth = self.reclassify(detr, ndval, self.med_depth)
             else:
-                if 1 in slope_sub:
-                    filled = self.fill_raster_holes(slope_sub, thresh, ndval)
-                    a = self.raster_to_shp(filled, dem)
-                    self.network.loc[i, 'fp_area'] = a
-                else:
-                    self.network.loc[i, 'fp_area'] = 0
+                depth = self.reclassify(detr, ndval, self.sm_depth)
+
+            overlap = self.raster_overlap(slope_sub, depth, ndval)
+            if 1 in overlap:
+                filled = self.fill_raster_holes(overlap, thresh, ndval)
+                a = self.raster_to_shp(filled, dem)
+                self.network.loc[i, 'fp_area'] = a
+            else:
+                self.network.loc[i, 'fp_area'] = 0
 
             demsrc.close()
 
@@ -502,18 +494,8 @@ class VBET:
             else:
                 sub.append(False)
 
-
-        #sub = vbm2s['geometry'].area >= 0.001*vbm2s['geometry'].area.max()
         vbcut = vbm2s[sub].reset_index(drop=True)
         vbcut.to_file(self.scratch + "/tempvb.shp")
-        # do it a second time?
-        #vb2 = gpd.read_file(self.scratch + "/tempvb.shp")
-        #vbm2s2 = vb2.explode()
-        #sub2 = vbm2s2['geometry'].area >= 0.05*vbm2s2['geometry'].area.max()
-        #vbcut2 = vbm2s2[sub2].reset_index(drop=True)
-        #vbcut2.to_file(self.scratch + "/tempvb.shp")
-
-        # TRY THIS - have to dissolve before chaikins
 
         polys = []
         for i in vbcut.index:
@@ -534,6 +516,8 @@ class VBET:
         vbf['Area_km2'] = areas
 
         vbf.to_file(self.out)
+
+        # clean up scratch workspace?
 
         return
 

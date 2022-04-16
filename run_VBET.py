@@ -5,9 +5,9 @@ from datetime import datetime
 class RunVBET:
     def __init__(self):
         self.params = {
-            'network': '/home/jordan/Documents/Riverscapes/scratch/clear_creek.shp',
+            'network': '/home/jordan/Documents/Riverscapes/scratch/10190004_network.shp',
             'dem': '/home/jordan/Documents/Riverscapes/scratch/dem_10190004.tif',
-            'out': '/home/jordan/Documents/Riverscapes/scratch/10190004_vbet2.shp',
+            'out': '/home/jordan/Documents/Riverscapes/scratch/vbet2_out2.shp',
             'scratch': '/home/jordan/Documents/Riverscapes/scratch/scratch',
             'lg_da': 300,
             'med_da': 30,
