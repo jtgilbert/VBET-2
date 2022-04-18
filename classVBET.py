@@ -12,6 +12,8 @@ from scipy.signal import convolve2d
 from scipy.linalg import lstsq
 import json
 import os.path
+from tqdm import tqdm
+from datetime import datetime
 
 
 class VBET:
@@ -36,10 +38,47 @@ class VBET:
         self.sm_buf = kwargs['sm_buf']
         self.min_buf = kwargs['min_buf']
         self.dr_area = kwargs['dr_area']
+        self.da_field = kwargs['da_field']
         self.lg_depth = kwargs['lg_depth']
         self.med_depth = kwargs['med_depth']
         self.sm_depth = kwargs['sm_depth']
 
+        # create metadata text file
+        metatxt = '{out}_metadata.txt'.format(out=self.out)
+        L = ['network: {} \n'.format(self.streams),
+             'dem: {} \n'.format(self.dem),
+             'output: {} \n'.format(self.out),
+             'scratch workspace: {} \n'.format(self.scratch),
+             'large drainage area threshold: {} \n'.format(self.lg_da),
+             'medium drainage area threshold: {} \n'.format(self.med_da),
+             'large slope threshold: {} \n'.format(self.lg_slope),
+             'medium slope threshold: {} \n'.format(self.med_slope),
+             'small slope threshold: {} \n'.format(self.sm_slope),
+             'large buffer: {} \n'.format(self.lg_buf),
+             'medium buffer: {} \n'.format(self.med_buf),
+             'small buffer: {} \n'.format(self.sm_buf),
+             'minimum buffer: {} \n'.format(self.min_buf),
+             'drainage area field: {} \n'.format(self.da_field),
+             'large depth: {} \n'.format(self.lg_depth),
+             'medium depth: {} \n'.format(self.med_depth),
+             'small depth: {} \n'.format(self.sm_depth)
+             ]
+        self.md = open(metatxt, 'w+')
+        self.md.writelines(L)
+        self.md.writelines('\nStarted: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+
+        # either use selected drainage area field, or pull drainage area from raster
+        if self.da_field is not None:
+            if self.da_field not in self.network.columns:
+                self.md.writelines('\n Exception: Drainage Area field selected for input network does not exist, make '
+                                   'sure it is entered correctly \n')
+                self.md.close()
+                raise Exception('Drainage Area field selected for input network does not exist, make sure it is '
+                                'entered correctly')
+            else:
+                self.network['Drain_Area'] = self.network[self.da_field]
+
+        # set crs for output
         self.crs_out = self.network.crs
 
         # check that scratch directory exists, make if not
@@ -49,30 +88,46 @@ class VBET:
             os.mkdir(self.scratch)
 
         # check that datasets are in projected coordinate system
-        if self.network.crs is None:
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-        if rasterio.open(self.dem).crs is None:
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-        if rasterio.open(self.dr_area).crs is None:
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
-
-        # check that all depth params have a value or are None
-        if self.lg_depth is None and (self.med_depth is not None or self.sm_depth is not None):
-            raise Exception('All depths (lg, med, sm) must have value or be None')
-        elif self.med_depth is None and (self.lg_depth is not None or self.sm_depth is not None):
-            raise Exception('All depths (lg, med, sm) must have value or be None')
-        elif self.sm_depth is None and (self.lg_depth is not None or self.med_depth is not None):
-            raise Exception('All depths (lg, med, sm) must have value or be None')
+        if not self.network.crs.is_projected:
+            self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                               'reference system \n')
+            self.md.close()
+            raise Exception('All geospatial inputs should have the same projected coordinate reference system')
+        if not rasterio.open(self.dem).crs.is_projected:
+            self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                               'reference system \n')
+            self.md.close()
+            raise Exception('All geospatial inputs should have the same projected coordinate reference system')
+        if self.network.crs.to_string() != rasterio.open(self.dem).crs.to_string():
+            self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                               'reference system \n')
+            self.md.close()
+            raise Exception('All geospatial inputs should have the same projected coordinate reference system')
+        if self.dr_area:
+            if not rasterio.open(self.dr_area).crs.is_projected:
+                self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                                   'reference system \n')
+                self.md.close()
+                raise Exception('All geospatial inputs should have the same projected coordinate reference system')
+            if self.network.crs.to_string() != rasterio.open(self.dr_area).crs.to_string():
+                self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                                   'reference system \n')
+                self.md.close()
+                raise Exception('All geospatial inputs should have the same projected coordinate reference system')
 
         # check that there are no segments with less than 5 vertices
         few_verts = []
-        for i in range(len(self.network)):
+        for i in self.network.index:
             if len(self.network.loc[i].geometry.xy[0]) <= 5:
                 few_verts.append(i)
         if len(few_verts) > 0:
+            self.md.writelines('\n Exception: There are network segments with fewer than 5 vertices. Add vertices in '
+                               'GIS \n')
+            self.md.close()
             raise Exception("Network segments with IDs ", few_verts, "don't have enough vertices for DEM detrending. "
                                                                      "Add vertices in GIS")
 
+        # add container for individual valley bottom features and add the minimum buffer into it
         self.polygons = []
 
         network_geom = self.network['geometry']
@@ -80,6 +135,38 @@ class VBET:
 
         for x in range(len(min_buf)):
             self.polygons.append(min_buf[x])
+
+        # save total network length for use in later parameter
+        self.seglengths = 0
+        for x in self.network.index:
+            self.seglengths += self.network.loc[x].geometry.length
+
+    def clean_network(self):
+
+        print('Cleaning up drainage network for VBET input')
+        print('starting with {} network segments'.format(len(self.network)))
+        # minimum length - remove short segments
+        with rasterio.open(self.dem, 'r') as src:
+            xres = src.res[0]
+        self.network = self.network[self.network.geometry.length > 5*xres]
+
+        # get rid of perfectly straight segments
+        sin = []
+        for i in self.network.index:
+            seg_geom = self.network.loc[i, 'geometry']
+            x_coord1 = seg_geom.boundary[0].xy[0][0]
+            y_coord1 = seg_geom.boundary[0].xy[1][0]
+            x_coord2 = seg_geom.boundary[1].xy[0][0]
+            y_coord2 = seg_geom.boundary[1].xy[1][0]
+
+            dist = ((x_coord1 - x_coord2) ** 2 + (y_coord1 - y_coord2) ** 2) ** 0.5
+            sin_val = seg_geom.length / dist
+            sin.append(sin_val)
+        self.network['sinuos'] = sin
+
+        self.network = self.network[self.network['sinuos'] >= 1.00001]
+
+        print('cleaned to {} network segments'.format(len(self.network)))
 
     def add_da(self):
         """
@@ -224,6 +311,8 @@ class VBET:
         input arrays have NoData
         """
         if array1.shape != array2.shape:
+            self.md.writelines('\n Exception: slope sub raster and depth sub raster are not the same size \n')
+            self.md.close()
             raise Exception('rasters are not same size')
 
         out_array = np.full(array1.shape, ndval)
@@ -343,12 +432,15 @@ class VBET:
         :return: saves a valley bottom shapefile
         """
 
-        for i in self.network.index:
+        self.clean_network()
+
+        print('Generating valley bottom for each network segment')
+        for i in tqdm(self.network.index):
             seg = self.network.loc[i]
             da = seg['Drain_Area']
             geom = seg['geometry']
 
-            print('segment ', i+1, ' of ', len(self.network.index))
+            # print('segment ', i+1, ' of ', len(self.network.index))
 
             ept1 = (geom.boundary[0].xy[0][0], geom.boundary[0].xy[1][0])
             ept2 = (geom.boundary[1].xy[0][0], geom.boundary[1].xy[1][0])
@@ -390,10 +482,7 @@ class VBET:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
 
             # set thresholds for hole filling
-            seglengths = 0
-            for x in self.network.index:
-                seglengths += self.network.loc[x].geometry.length
-            avlen = int(seglengths / len(self.network))
+            avlen = int(self.seglengths / len(self.network))
             if da < self.med_da:
                 thresh = avlen * self.sm_buf * 0.005
             elif self.med_da <= da < self.lg_da:
@@ -401,33 +490,31 @@ class VBET:
             else:  # da >= self.lg_da:
                 thresh = avlen * self.lg_buf * 0.005
 
-            # only detrend if depth is being used
-            if self.med_depth is not None:
-                detr = self.detrend(dem, geom)  # might want to change this offset
+            # detrend segment dem
+            detr = self.detrend(dem, geom)  # might want to change this offset
 
-                if da >= self.lg_da:
-                    depth = self.reclassify(detr, ndval, self.lg_depth)
-                elif self.lg_da > da >= self.med_da:
-                    depth = self.reclassify(detr, ndval, self.med_depth)
-                else:
-                    depth = self.reclassify(detr, ndval, self.sm_depth)
+            if da >= self.lg_da:
+                depth = self.reclassify(detr, ndval, self.lg_depth)
+            elif self.lg_da > da >= self.med_da:
+                depth = self.reclassify(detr, ndval, self.med_depth)
+            else:
+                depth = self.reclassify(detr, ndval, self.sm_depth)
 
-                overlap = self.raster_overlap(slope_sub, depth, ndval)
+            overlap = self.raster_overlap(slope_sub, depth, ndval)
+            if 1 in overlap:
                 filled = self.fill_raster_holes(overlap, thresh, ndval)
                 a = self.raster_to_shp(filled, dem)
                 self.network.loc[i, 'fp_area'] = a
             else:
-                filled = self.fill_raster_holes(slope_sub, thresh, ndval)
-                a = self.raster_to_shp(filled, dem)
-                self.network.loc[i, 'fp_area'] = a
+                self.network.loc[i, 'fp_area'] = 0
 
             demsrc.close()
 
         self.network.to_file(self.streams)
 
         # merge all polygons in folder and dissolve
-        print("Creating valley bottom")
-        vb = gpd.GeoSeries(cascaded_union(self.polygons))  #
+        print("Merging valley bottom segments")
+        vb = gpd.GeoSeries(unary_union(self.polygons))  #
         vb.crs = self.crs_out
         vb.to_file(self.scratch + "/tempvb.shp")
 
@@ -438,19 +525,25 @@ class VBET:
         vbc.to_file(self.scratch + "/tempvb.shp")
 
         # get rid of small unattached polygons
+        self.network.to_file(self.scratch + "/dissnetwork.shp")
+        network2 = gpd.read_file(self.scratch + "/dissnetwork.shp")
+        network2['dissolve'] = 1
+        network2 = network2.dissolve('dissolve')
         vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
         vbm2s = vb1.explode()
-        sub = vbm2s['geometry'].area >= 0.001*vbm2s['geometry'].area.max()
+        sub = []
+        for i in vbm2s.index:
+            segs = 0
+            for j in network2.index:
+                if network2.loc[j].geometry.intersects(vbm2s.loc[i].geometry):
+                    segs += 1
+            if segs > 0:
+                sub.append(True)
+            else:
+                sub.append(False)
+
         vbcut = vbm2s[sub].reset_index(drop=True)
         vbcut.to_file(self.scratch + "/tempvb.shp")
-        # do it a second time?
-        #vb2 = gpd.read_file(self.scratch + "/tempvb.shp")
-        #vbm2s2 = vb2.explode()
-        #sub2 = vbm2s2['geometry'].area >= 0.05*vbm2s2['geometry'].area.max()
-        #vbcut2 = vbm2s2[sub2].reset_index(drop=True)
-        #vbcut2.to_file(self.scratch + "/tempvb.shp")
-
-        # TRY THIS - have to dissolve before chaikins
 
         polys = []
         for i in vbcut.index:
@@ -464,8 +557,19 @@ class VBET:
             p = polys[0]
 
         vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[p])
+        vbf = vbf.explode()
+        areas = []
+        for i in vbf.index:
+            areas.append(vbf.loc[i].geometry.area/1000000.)
+        vbf['Area_km2'] = areas
 
         vbf.to_file(self.out)
+
+        # close metadata text tile
+        self.md.writelines('\nFinished: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        self.md.close()
+
+        # clean up scratch workspace?
 
         return
 
