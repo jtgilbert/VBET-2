@@ -63,12 +63,13 @@ It's also a good idea to make a copy of the network for use with the tool as the
 clean the network.
 
 ## Running the model
+
 ### GUI
-To run the model, go to the releases tab and download the release appropriate for your OS 
-(Windows 64 bit and Linux 64 bit available). Unzip the download folder in a chosen location. 
-Open the folder and then double-click on the VBET.exe to run the program. For Linux, open the
-unzipped directory, open a command prompt inside the folder and type the command: ./VBET to 
-run the program. 
+To run the model, go to the [releases](https://github.com/jtgilbert/VBET-2/releases) tab and 
+download the release appropriate for your OS (Windows 64 bit and Linux 64 bit available). Unzip 
+the download folder in a chosen location. Open the folder and then double-click on the 
+VBET.exe to run the program. For Linux, open the unzipped directory, open a command prompt 
+inside the folder and type the command: ./VBET to run the program. 
 
 In addition to a shapefile of the valley bottom, the tool produces a text file with the same 
 name as the output with "metadata" appended on the end that contains the files and parameter 
@@ -79,7 +80,7 @@ message should be recorded in the metadata txt file for diagnosis**.
 If you are using a different OS, or prefer to run the code manually in an IDE, you can 
 download the repository and run it in an IDE. Configure a Python environment with the packages 
 listed below, fill out the parameter values in the 'run_VBET.py' script and then run the script
-(after uncommenting lines 58 & 59).
+(after uncommenting lines 34 & 35).
 
 ### Required Python packages
 #### Python 3
