@@ -13,6 +13,7 @@ from scipy.linalg import lstsq
 import json
 import os.path
 from tqdm import tqdm
+from datetime import datetime
 
 
 class VBET:
@@ -42,9 +43,36 @@ class VBET:
         self.med_depth = kwargs['med_depth']
         self.sm_depth = kwargs['sm_depth']
 
+        # create metadata text file
+        metatxt = '{out}_metadata.txt'.format(out=self.out)
+        L = ['network: {} \n'.format(self.streams),
+             'dem: {} \n'.format(self.dem),
+             'output: {} \n'.format(self.out),
+             'scratch workspace: {} \n'.format(self.scratch),
+             'large drainage area threshold: {} \n'.format(self.lg_da),
+             'medium drainage area threshold: {} \n'.format(self.med_da),
+             'large slope threshold: {} \n'.format(self.lg_slope),
+             'medium slope threshold: {} \n'.format(self.med_slope),
+             'small slope threshold: {} \n'.format(self.sm_slope),
+             'large buffer: {} \n'.format(self.lg_buf),
+             'medium buffer: {} \n'.format(self.med_buf),
+             'small buffer: {} \n'.format(self.sm_buf),
+             'minimum buffer: {} \n'.format(self.min_buf),
+             'drainage area field: {} \n'.format(self.da_field),
+             'large depth: {} \n'.format(self.lg_depth),
+             'medium depth: {} \n'.format(self.med_depth),
+             'small depth: {} \n'.format(self.sm_depth)
+             ]
+        self.md = open(metatxt, 'w+')
+        self.md.writelines(L)
+        self.md.writelines('\nStarted: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+
         # either use selected drainage area field, or pull drainage area from raster
         if self.da_field is not None:
             if self.da_field not in self.network.columns:
+                self.md.writelines('\n Exception: Drainage Area field selected for input network does not exist, make '
+                                   'sure it is entered correctly \n')
+                self.md.close()
                 raise Exception('Drainage Area field selected for input network does not exist, make sure it is '
                                 'entered correctly')
             else:
@@ -61,16 +89,31 @@ class VBET:
 
         # check that datasets are in projected coordinate system
         if not self.network.crs.is_projected:
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+            self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                               'reference system \n')
+            self.md.close()
+            raise Exception('All geospatial inputs should have the same projected coordinate reference system')
         if not rasterio.open(self.dem).crs.is_projected:
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+            self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                               'reference system \n')
+            self.md.close()
+            raise Exception('All geospatial inputs should have the same projected coordinate reference system')
         if self.network.crs.to_string() != rasterio.open(self.dem).crs.to_string():
-            raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+            self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                               'reference system \n')
+            self.md.close()
+            raise Exception('All geospatial inputs should have the same projected coordinate reference system')
         if self.dr_area:
             if not rasterio.open(self.dr_area).crs.is_projected:
-                raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+                self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                                   'reference system \n')
+                self.md.close()
+                raise Exception('All geospatial inputs should have the same projected coordinate reference system')
             if self.network.crs.to_string() != rasterio.open(self.dr_area).crs.to_string():
-                raise Exception('All geospatial inputs should be have the same projected coordinate reference system')
+                self.md.writelines('\n Exception: All geospatial inputs should have the same projected coordinate '
+                                   'reference system \n')
+                self.md.close()
+                raise Exception('All geospatial inputs should have the same projected coordinate reference system')
 
         # check that there are no segments with less than 5 vertices
         few_verts = []
@@ -78,6 +121,9 @@ class VBET:
             if len(self.network.loc[i].geometry.xy[0]) <= 5:
                 few_verts.append(i)
         if len(few_verts) > 0:
+            self.md.writelines('\n Exception: There are network segments with fewer than 5 vertices. Add vertices in '
+                               'GIS \n')
+            self.md.close()
             raise Exception("Network segments with IDs ", few_verts, "don't have enough vertices for DEM detrending. "
                                                                      "Add vertices in GIS")
 
@@ -265,6 +311,8 @@ class VBET:
         input arrays have NoData
         """
         if array1.shape != array2.shape:
+            self.md.writelines('\n Exception: slope sub raster and depth sub raster are not the same size \n')
+            self.md.close()
             raise Exception('rasters are not same size')
 
         out_array = np.full(array1.shape, ndval)
@@ -516,6 +564,10 @@ class VBET:
         vbf['Area_km2'] = areas
 
         vbf.to_file(self.out)
+
+        # close metadata text tile
+        self.md.writelines('\nFinished: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        self.md.close()
 
         # clean up scratch workspace?
 

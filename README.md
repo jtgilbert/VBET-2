@@ -1,5 +1,5 @@
 # VBET 2 v2.1
-Valley Bottom Extraction Tool (updated: 04/16/2022)
+Valley Bottom Extraction Tool (updated: 04/18/2022)
 
 VBET uses a stream network shapefile and digital elevation model to derive a valley bottom 
 polygon based on two lines of evidence: slope and inundation depth. The values for these 
@@ -66,13 +66,14 @@ clean the network.
 ### GUI
 To run the model, go to the releases tab and download the release appropriate for your OS 
 (Windows 64 bit and Linux 64 bit available). Unzip the download folder in a chosen location. 
-For windows, navigate to VBET-2 -> dist -> VBET, and then double-click on the VBET.exe to 
-run the program. For Linux, navigate to the navigate to VBET-2 -> dist -> VBET directory,
-open a command prompt inside the folder and type the command: ./VBET to run the program. 
+Open the folder and then double-click on the VBET.exe to run the program. For Linux, open the
+unzipped directory, open a command prompt inside the folder and type the command: ./VBET to 
+run the program. 
 
 In addition to a shapefile of the valley bottom, the tool produces a text file with the same 
 name as the output with "metadata" appended on the end that contains the files and parameter 
-values used for that particular run of the tool.
+values used for that particular run of the tool. **If the tool fails for some reason, the error
+message should be recorded in the metadata txt file for diagnosis**.
 
 ### IDE
 If you are using a different OS, or prefer to run the code manually in an IDE, you can 
