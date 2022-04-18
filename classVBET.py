@@ -43,6 +43,8 @@ class VBET:
         self.med_depth = kwargs['med_depth']
         self.sm_depth = kwargs['sm_depth']
 
+        self.version = '2.1.0'
+
         # create metadata text file
         metatxt = '{out}_metadata.txt'.format(out=self.out)
         L = ['network: {} \n'.format(self.streams),
@@ -65,6 +67,7 @@ class VBET:
              ]
         self.md = open(metatxt, 'w+')
         self.md.writelines(L)
+        self.md.writelines('\n VBET-2 version {}'.format(self.version))
         self.md.writelines('\nStarted: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         # either use selected drainage area field, or pull drainage area from raster
