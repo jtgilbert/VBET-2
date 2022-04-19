@@ -43,10 +43,13 @@ class VBET:
         self.med_depth = kwargs['med_depth']
         self.sm_depth = kwargs['sm_depth']
 
-        self.version = '2.1.0'
+        self.version = '2.1.1'
+
+        if not os.path.isdir(os.path.dirname(self.out)):
+            os.mkdir(os.path.dirname(self.out))
 
         # create metadata text file
-        metatxt = '{out}_metadata.txt'.format(out=self.out)
+        metatxt = '{out}_metadata.txt'.format(out=os.path.dirname(self.out)+'/'+os.path.basename(self.out)[0:-4])
         L = ['network: {} \n'.format(self.streams),
              'dem: {} \n'.format(self.dem),
              'output: {} \n'.format(self.out),
@@ -520,12 +523,14 @@ class VBET:
         vb = gpd.GeoSeries(unary_union(self.polygons))  #
         vb.crs = self.crs_out
         vb.to_file(self.scratch + "/tempvb.shp")
+        del vb
 
         # simplify and smooth polygon
         print("Cleaning valley bottom")
         vbc = gpd.read_file(self.scratch + "/tempvb.shp")
         vbc = vbc.simplify(3, preserve_topology=True)  # make number a function of dem resolution
         vbc.to_file(self.scratch + "/tempvb.shp")
+        del vbc
 
         # get rid of small unattached polygons
         self.network.to_file(self.scratch + "/dissnetwork.shp")
@@ -533,7 +538,10 @@ class VBET:
         network2['dissolve'] = 1
         network2 = network2.dissolve('dissolve')
         vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
-        vbm2s = vb1.explode()
+        vbm2s = vb1.explode(ignore_index=True)
+        print('Removing valley bottom features that do not intersect stream network')
+        print('Started with {} valley bottom features'.format(len(vbm2s)))
+        del vb1
         sub = []
         for i in vbm2s.index:
             segs = 0
@@ -546,6 +554,8 @@ class VBET:
                 sub.append(False)
 
         vbcut = vbm2s[sub].reset_index(drop=True)
+        print('Cleaned to {} valley bottom features'.format(len(vbcut)))
+        del vbm2s
         vbcut.to_file(self.scratch + "/tempvb.shp")
 
         polys = []
@@ -560,7 +570,7 @@ class VBET:
             p = polys[0]
 
         vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[p])
-        vbf = vbf.explode()
+        vbf = vbf.explode(ignore_index=True)
         areas = []
         for i in vbf.index:
             areas.append(vbf.loc[i].geometry.area/1000000.)
