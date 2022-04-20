@@ -49,7 +49,7 @@ class VBET:
             os.mkdir(os.path.dirname(self.out))
 
         # create metadata text file
-        metatxt = '{out}_metadata.txt'.format(out=os.path.dirname(self.out)+'/'+os.path.basename(self.out)[0:-4])
+        metatxt = '{out}_metadata.txt'.format(out=os.path.dirname(self.out)+'/'+os.path.basename(self.out))
         L = ['network: {} \n'.format(self.streams),
              'dem: {} \n'.format(self.dem),
              'output: {} \n'.format(self.out),
