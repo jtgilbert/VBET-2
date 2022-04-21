@@ -70,7 +70,7 @@ class VBET:
              ]
         self.md = open(metatxt, 'w+')
         self.md.writelines(L)
-        self.md.writelines('\n VBET-2 version {}'.format(self.version))
+        self.md.writelines('\nVBET-2 version {}\n'.format(self.version))
         self.md.writelines('\nStarted: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         # either use selected drainage area field, or pull drainage area from raster
@@ -159,14 +159,13 @@ class VBET:
         # get rid of perfectly straight segments
         sin = []
         for i in self.network.index:
-            seg_geom = self.network.loc[i, 'geometry']
-            x_coord1 = seg_geom.boundary[0].xy[0][0]
-            y_coord1 = seg_geom.boundary[0].xy[1][0]
-            x_coord2 = seg_geom.boundary[1].xy[0][0]
-            y_coord2 = seg_geom.boundary[1].xy[1][0]
+            seg_geom = self.network.loc[i].geometry
+            pts = []
+            for pt in seg_geom.boundary.geoms:
+                pts.append([pt.xy[0][0], pt.xy[1][0]])
+            line = LineString(pts)
 
-            dist = ((x_coord1 - x_coord2) ** 2 + (y_coord1 - y_coord2) ** 2) ** 0.5
-            sin_val = seg_geom.length / dist
+            sin_val = seg_geom.length / line.length
             sin.append(sin_val)
         self.network['sinuos'] = sin
 
@@ -347,7 +346,7 @@ class VBET:
                     binary[j, i] = 1
 
         b = mo.remove_small_holes(binary, thresh, 1)
-        c = mo.binary_closing(b, selem=np.ones((7, 7)))
+        c = mo.binary_closing(b, footprint=np.ones((7, 7)))
         d = mo.remove_small_holes(c, thresh, 1)
 
         out_array = np.full(d.shape, ndval, dtype=np.float32)
@@ -398,7 +397,6 @@ class VBET:
         geoms = list(results)
         if len(geoms) == 0:
             return 0
-            #raise Exception('No raster cells to convert to shapefile, try changing model parameters')
 
         else:
             df = gpd.GeoDataFrame.from_features(geoms)
@@ -444,13 +442,13 @@ class VBET:
         for i in tqdm(self.network.index):
             seg = self.network.loc[i]
             da = seg['Drain_Area']
-            geom = seg['geometry']
+            seg_geom = seg.geometry
 
             # print('segment ', i+1, ' of ', len(self.network.index))
-
-            ept1 = (geom.boundary[0].xy[0][0], geom.boundary[0].xy[1][0])
-            ept2 = (geom.boundary[1].xy[0][0], geom.boundary[1].xy[1][0])
-            line = LineString([ept1, ept2])
+            pts = []
+            for pt in seg_geom.boundary.geoms:
+                pts.append([pt.xy[0][0], pt.xy[1][0]])
+            line = LineString(pts)
 
             if da >= self.lg_da:
                 buf = line.buffer(self.lg_buf, cap_style=1)
@@ -497,7 +495,7 @@ class VBET:
                 thresh = avlen * self.lg_buf * 0.005
 
             # detrend segment dem
-            detr = self.detrend(dem, geom)  # might want to change this offset
+            detr = self.detrend(dem, seg_geom)  # might want to change this offset
 
             if da >= self.lg_da:
                 depth = self.reclassify(detr, ndval, self.lg_depth)

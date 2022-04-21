@@ -4,12 +4,12 @@ import classVBET
 class RunVBET:
     def __init__(self):
         self.params = {
-            'network': '/home/jordan/Documents/Riverscapes/scratch/10190004_network.shp',
-            'dem': '/home/jordan/Documents/Riverscapes/scratch/dem_10190004.tif',
-            'out': '/home/jordan/Documents/Riverscapes/scratch/vbet2_out2.shp',
-            'scratch': '/home/jordan/Documents/Riverscapes/scratch/scratch',
-            'lg_da': 300,
-            'med_da': 30,
+            'network': '/path/to/stream/network.shp',
+            'dem': '/path/to/dem.tif',
+            'out': '/path/to/vbet/output.shp',
+            'scratch': 'path/to/scratch/workspace',
+            'lg_da': 250,
+            'med_da': 25,
             'lg_slope': 3,
             'med_slope': 4,
             'sm_slope': 5,
