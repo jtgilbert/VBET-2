@@ -48,7 +48,10 @@ class VBETTool(QDialog, vbet_ui.Ui_Dialog):
         inst.params['sm_buf'] = float(self.lineEdit_smbuf.text())
         inst.params['min_buf'] = float(self.lineEdit_minbuf.text())
         inst.params['dr_area'] = str(self.lineEdit_da.text())
-        inst.params['da_field'] = str(self.lineEdit_exda.text())
+        if str(self.lineEdit_exda.text()) != '':
+            inst.params['da_field'] = str(self.lineEdit_exda.text())
+        else:
+            inst.params['da_field'] = None
         inst.params['lg_depth'] = self.SpinBox_lgdepth.value()
         inst.params['med_depth'] = self.SpinBox_meddepth.value()
         inst.params['sm_depth'] = self.SpinBox_smdepth.value()
