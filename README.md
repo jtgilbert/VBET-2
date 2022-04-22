@@ -84,13 +84,14 @@ listed below, fill out the parameter values in the 'run_VBET.py' script and then
 
 ### Required Python packages
 #### Python 3
-- geopandas 
-- rasterio 
-- shapely
-- rasterstats
-- numpy 
+- numpy
 - scipy
-- scikit-image 
+- scikit-image
+- GDAL
+- rasterio 
+- geopandas 
+- rasterstats
+- tqdm
 
 ## Parameters 
 
