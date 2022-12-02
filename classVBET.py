@@ -43,7 +43,7 @@ class VBET:
         self.med_depth = kwargs['med_depth']
         self.sm_depth = kwargs['sm_depth']
 
-        self.version = '2.1.1'
+        self.version = '2.1.2'
 
         if not os.path.isdir(os.path.dirname(self.out)):
             os.mkdir(os.path.dirname(self.out))
@@ -123,15 +123,22 @@ class VBET:
 
         # check that there are no segments with less than 5 vertices
         few_verts = []
+        multipart = []
         for i in self.network.index:
             if len(self.network.loc[i].geometry.xy[0]) <= 5:
                 few_verts.append(i)
+            if self.network.loc[i].geometry.type == 'MultiLineString':
+                multipart.append(i)
         if len(few_verts) > 0:
             self.md.writelines('\n Exception: There are network segments with fewer than 5 vertices. Add vertices in '
                                'GIS \n')
             self.md.close()
             raise Exception("Network segments with IDs ", few_verts, "don't have enough vertices for DEM detrending. "
                                                                      "Add vertices in GIS")
+        if len(multipart) > 0:
+            self.md.writelines('\n Exception: There are multipart features in the input stream network \n')
+            self.md.close()
+            raise Exception('There are multipart features in the input stream network')
 
         # add container for individual valley bottom features and add the minimum buffer into it
         self.polygons = []
@@ -444,18 +451,12 @@ class VBET:
             da = seg['Drain_Area']
             seg_geom = seg.geometry
 
-            # print('segment ', i+1, ' of ', len(self.network.index))
-            pts = []
-            for pt in seg_geom.boundary.geoms:
-                pts.append([pt.xy[0][0], pt.xy[1][0]])
-            line = LineString(pts)
-
             if da >= self.lg_da:
-                buf = line.buffer(self.lg_buf, cap_style=1)
+                buf = seg_geom.buffer(self.lg_buf, cap_style=1)
             elif self.lg_da > da >= self.med_da:
-                buf = line.buffer(self.med_buf, cap_style=1)
+                buf = seg_geom.buffer(self.med_buf, cap_style=1)
             else:
-                buf = line.buffer(self.sm_buf, cap_style=1)
+                buf = seg_geom.buffer(self.sm_buf, cap_style=1)
 
             bufds = gpd.GeoSeries(buf)
             coords = self.getFeatures(bufds)

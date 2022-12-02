@@ -1,5 +1,5 @@
 # VBET 2 v2.1
-Valley Bottom Extraction Tool (updated: 04/18/2022)
+Valley Bottom Extraction Tool (updated: 12/02/2022)
 
 VBET uses a stream network shapefile and digital elevation model to derive a valley bottom 
 polygon based on two lines of evidence: slope and inundation depth. The values for these 
