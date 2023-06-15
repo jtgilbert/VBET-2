@@ -309,7 +309,7 @@ class VBET:
                 elif thresh >= array[j, i] > 0:
                     out_array[j, i] = 1
                 else:
-                    array[j, i] = ndval
+                    out_array[j, i] = ndval
 
         return out_array
 
